@@ -1,0 +1,212 @@
+{% extends 'base.html' %}
+
+{% block title %}Tableau de Bord{% endblock %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Tableau de Bord</h1>
+    <a href="{{ url_for('download_xlsx') }}" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm">
+        <i class="fas fa-download fa-sm text-white-50"></i> Télécharger XLSX
+    </a>
+</div>
+
+<!-- Cartes de Statistiques -->
+<div class="row">
+    <div class="col-xl-4 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            Total Factures
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_invoices if stats else 0 }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-file-invoice fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Valeur Totale (USD)
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">${{ "%.2f" | format(stats.total_value) if stats and stats.total_value else 0 }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-dollar-sign fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                            Facture Moyenne (USD)
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">${{ "%.2f" | format(stats.avg_value) if stats and stats.avg_value else 0 }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-calculator fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Graphiques -->
+<div class="row">
+    <div class="col-xl-6 col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Revenus Mensuels</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-area">
+                    <canvas id="monthlyChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-6 col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Répartition des Produits</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-area">
+                    <canvas id="productChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tableau des Factures Récentes -->
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Factures Récentes</h6>
+    </div>
+    <div class="card-body">
+        {% if invoices %}
+        <div class="table-responsive">
+            <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>Numéro OT</th>
+                        <th>Date</th>
+                        <th>Entreprise</th>
+                        <th>Produit</th>
+                        <th>Quantité (TM)</th>
+                        <th>Total (USD)</th>
+                        <th>Total sans Fret</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for invoice in invoices %}
+                    <tr>
+                        <td>{{ invoice.ot_number }}</td>
+                        <td>{{ invoice.invoice_date }}</td>
+                        <td>{{ invoice.societe }}</td>
+                        <td>{{ invoice.produit }}</td>
+                        <td>{{ invoice.quantite }}</td>
+                        <td>${{ invoice.total_usd }}</td>
+                        <td>${{ invoice.total_sans_fret }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p>Aucune facture trouvée</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Graphique des Revenus Mensuels
+    const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
+    const monthlyData = {{ monthly_data | tojson | safe }} || [];
+    if (monthlyData.length > 0) {
+        new Chart(monthlyCtx, {
+            type: 'bar',
+            data: {
+                labels: monthlyData.map(d => d.month),
+                datasets: [{
+                    label: 'Total USD',
+                    data: monthlyData.map(d => d.total || 0),
+                    backgroundColor: 'rgba(78, 115, 223, 0.5)',
+                    borderColor: 'rgba(78, 115, 223, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Total USD' } },
+                    x: { title: { display: true, text: 'Mois' } }
+                }
+            }
+        });
+    }
+
+    // Graphique de Répartition des Produits avec Pourcentages
+    const productCtx = document.getElementById('productChart').getContext('2d');
+    const productData = {{ product_data | tojson | safe }} || [];
+    if (productData.length > 0) {
+        const total = productData.reduce((sum, d) => {
+            const value = parseFloat(d.total) || 0;
+            return sum + value;
+        }, 0);
+        new Chart(productCtx, {
+            type: 'pie',
+            data: {
+                labels: productData.map(d => d.produit || 'Inconnu'),
+                datasets: [{
+                    label: 'Total USD',
+                    data: productData.map(d => parseFloat(d.total) || 0),
+                    backgroundColor: [
+                        'rgba(78, 115, 223, 0.5)',
+                        'rgba(54, 162, 235, 0.5)',
+                        'rgba(255, 99, 132, 0.5)',
+                        'rgba(75, 192, 192, 0.5)',
+                        'rgba(153, 102, 255, 0.5)'
+                    ],
+                    borderColor: [
+                        'rgba(78, 115, 223, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(153, 102, 255, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: 'Répartition des Produits par Revenu' },
+                    tooltip: { callbacks: { label: (tooltipItem) => {
+                        const value = parseFloat(tooltipItem.raw) || 0;
+                        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%';
+                        return `${tooltipItem.label}: ${value.toLocaleString()} USD (${percentage})`;
+                    }}}
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+
+{% block title %}Téléverser une Facture{% endblock %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Téléverser une Facture</h1>
+</div>
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Téléverser une Facture PDF</h6>
+    </div>
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="file">Sélectionner un Fichier PDF</label>
+                <input type="file" class="form-control-file" id="file" name="file" accept=".pdf" required>
+            </div>
+            <div class="form-group">
+                <label for="societe">Nom de l'Entreprise (Optionnel)</label>
+                <input type="text" class="form-control" id="societe" name="societe" placeholder="Remplacer le nom de l'entreprise si nécessaire">
+            </div>
+            <button type="submit" class="btn btn-primary">Téléverser</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

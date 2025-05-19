@@ -1,0 +1,78 @@
+/* Main Layout Fixes */
+body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    line-height: 1.6;
+    color: #333;
+}
+
+/* Navigation Menu */
+.nav-menu {
+    background: #2c3e50;
+    padding: 20px;
+    color: white;
+}
+
+.nav-menu a {
+    color: white;
+    display: block;
+    padding: 10px;
+    text-decoration: none;
+}
+
+/* Form Styling */
+.upload-form {
+    max-width: 600px;
+    margin: 20px auto;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background: #f9f9f9;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.form-control {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+/* File Input Styling */
+.file-input-wrapper {
+    position: relative;
+    margin-bottom: 15px;
+}
+
+.file-input-label {
+    display: block;
+    padding: 8px;
+    background: #e9ecef;
+    border: 1px dashed #adb5bd;
+    border-radius: 4px;
+    text-align: center;
+    cursor: pointer;
+}
+
+/* Button Styling */
+.btn {
+    background: #3498db;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.btn:hover {
+    background: #2980b9;
+}
