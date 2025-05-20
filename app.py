@@ -7,6 +7,8 @@ import mysql.connector
 from werkzeug.utils import secure_filename
 import openpyxl
 from io import BytesIO
+import pandas as pd
+import numpy as np
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -20,6 +22,17 @@ db_config = {
     'password': 'MedYahya47!!',
     'database': 'data_upload'
 }
+
+# Définir un filtre personnalisé pour formater les nombres
+def format_number(value):
+    try:
+        # Convertir en float et formater avec des séparateurs de milliers et 2 décimales
+        return "{:,.2f}".format(float(value))
+    except (ValueError, TypeError):
+        return "0.00"
+
+# Enregistrer le filtre dans l'environnement Jinja2
+app.jinja_env.filters['format_number'] = format_number
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
@@ -141,7 +154,7 @@ def get_dashboard_data():
     """)
     monthly_data = cursor.fetchall() or []
 
-    # Répartition des produits pour le graphique
+    # Répartition des produits pour le graphique (en pourcentage)
     cursor.execute("""
         SELECT 
             produit,
@@ -149,17 +162,84 @@ def get_dashboard_data():
         FROM invoices
         GROUP BY produit
     """)
-    product_data = cursor.fetchall() or []
+    product_data_raw = cursor.fetchall() or []
+    total_usd = sum(float(row['total']) for row in product_data_raw) if product_data_raw else 1  # Éviter division par zéro
+    product_data = [{'produit': row['produit'], 'total': round((float(row['total']) / total_usd * 100), 2)} for row in product_data_raw]
+
+    # Données pour les nouveaux graphiques (Pourcentages par Société et Société/Destination)
+    cursor.execute("""
+        SELECT societe, destination, quantite
+        FROM invoices
+    """)
+    graph_data = cursor.fetchall()
+
+    # Charger les données dans un DataFrame Pandas pour les calculs
+    df = pd.DataFrame(graph_data)
+
+    # Calculer les pourcentages par société
+    total_quantite = df['quantite'].sum() if not df['quantite'].empty else 0
+    if total_quantite == 0:
+        societe_labels = []
+        societe_pourcentages = []
+        societe_quantites = []
+        datasets = []
+    else:
+        societe_quantites_df = df.groupby('societe')['quantite'].sum().reset_index()
+        societe_quantites_df['pourcentage'] = (societe_quantites_df['quantite'] / total_quantite * 100).round(2)
+
+        # Valider les données pour s'assurer qu'elles sont des nombres
+        societe_labels = societe_quantites_df['societe'].tolist()
+        societe_pourcentages = [float(p) if not pd.isna(p) else 0.0 for p in societe_quantites_df['pourcentage'].tolist()]
+        societe_quantites = [float(q) if not pd.isna(q) else 0.0 for q in societe_quantites_df['quantite'].tolist()]
+
+        # Calculer les pourcentages par société et destination
+        societe_destination = df.groupby(['societe', 'destination'])['quantite'].sum().reset_index()
+        societe_destination['pourcentage'] = (societe_destination['quantite'] / total_quantite * 100).round(2)
+
+        # Préparer les données pour Chart.js (Graphique 2 : Pourcentages par Société et Destination)
+        destinations = df['destination'].unique().tolist()
+        societe_destination_data = {}
+        for societe in societe_labels:
+            societe_destination_data[societe] = {}
+            for dest in destinations:
+                subset = societe_destination[(societe_destination['societe'] == societe) & (societe_destination['destination'] == dest)]
+                societe_destination_data[societe][dest] = subset['pourcentage'].iloc[0] if not subset.empty else 0
+
+        # Préparer les datasets pour le graphique empilé
+        datasets = []
+        colors = ['#4E79A7', '#F28E2B']  # Couleurs pour Nouadhibou et Nouakchott
+        for i, dest in enumerate(destinations):
+            data = [float(societe_destination_data[societe][dest]) if not pd.isna(societe_destination_data[societe][dest]) else 0.0 for societe in societe_labels]
+            datasets.append({
+                'label': dest,
+                'data': data,
+                'backgroundColor': colors[i % len(colors)]
+            })
+
+    # Ajouter des logs pour déboguer les données
+    print("DEBUG - societe_labels:", societe_labels)
+    print("DEBUG - societe_pourcentages:", societe_pourcentages)
+    print("DEBUG - societe_quantites:", societe_quantites)
+    print("DEBUG - datasets:", datasets)
+    print("DEBUG - product_data:", product_data)
 
     cursor.close()
     conn.close()
 
-    return invoices, stats, monthly_data, product_data
+    return invoices, stats, monthly_data, product_data, societe_labels, societe_pourcentages, societe_quantites, datasets
 
 @app.route('/')
 def dashboard():
-    invoices, stats, monthly_data, product_data = get_dashboard_data()
-    return render_template('dashboard.html', invoices=invoices, stats=stats, monthly_data=monthly_data, product_data=product_data)
+    invoices, stats, monthly_data, product_data, societe_labels, societe_pourcentages, societe_quantites, datasets = get_dashboard_data()
+    return render_template('dashboard.html',
+                          invoices=invoices,
+                          stats=stats,
+                          monthly_data=monthly_data,
+                          product_data=product_data,
+                          societe_labels=societe_labels,
+                          societe_pourcentages=societe_pourcentages,
+                          societe_quantites=societe_quantites,
+                          datasets=datasets)
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
