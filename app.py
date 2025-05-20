@@ -8,7 +8,6 @@ from werkzeug.utils import secure_filename
 import openpyxl
 from io import BytesIO
 import pandas as pd
-import numpy as np
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -289,6 +288,12 @@ def upload():
                 flash('Facture traitée avec succès !', 'success')
                 return redirect(url_for('dashboard'))
 
+            except mysql.connector.Error as err:
+                if err.errno == 1062:  # Duplicate entry error code
+                    flash(f"Erreur: L'ordre de transfert No {invoice_data['ot_number']} existe déjà", 'danger')
+                else:
+                    flash(f'Erreur de base de données : {str(err)}', 'danger')
+                return redirect(request.url)
             except Exception as e:
                 flash(f'Erreur lors du traitement de la facture : {str(e)}', 'danger')
                 return redirect(request.url)

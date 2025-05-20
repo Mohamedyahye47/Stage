@@ -317,56 +317,82 @@
     });
 
     // Graphique 2 : Pourcentages par Société et Destination (Empilé)
-    const societeDestinationCtx = document.getElementById('societeDestinationChart').getContext('2d');
-    new Chart(societeDestinationCtx, {
-        type: 'bar',
-        data: {
-            labels: {{ societe_labels | tojson }},
-            datasets: {{ datasets | tojson }}
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            scales: {
-                xAxes: [{
-                    stacked: true,
-                    ticks: {
-                        beginAtZero: true,
-                        suggestedMax: 100,
-                        callback: function(value) {
-                            return value + '%';
-                        }
-                    },
-                    scaleLabel: {
-                        display: true,
-                        labelString: 'Pourcentage (%)'
-                    }
-                }],
-                yAxes: [{
-                    stacked: true,
-                    scaleLabel: {
-                        display: true,
-                        labelString: 'Société'
-                    }
-                }]
-            },
-            plugins: {
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            let value = context.parsed.x || 0;
-                            return label + ': ' + value.toFixed(2) + '%';
-                        }
-                    }
-                },
-                legend: {
+const societeDestinationCtx = document.getElementById('societeDestinationChart').getContext('2d');
+new Chart(societeDestinationCtx, {
+    type: 'bar',
+    data: {
+        labels: {{ societe_labels | tojson }},
+        datasets: {{ datasets | tojson }}
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        scales: {
+            x: {
+                stacked: true,
+                beginAtZero: true,
+                max: 100,
+                title: {
                     display: true,
-                    position: 'top'
+                    text: 'Pourcentage (%)'
+                },
+                ticks: {
+                    callback: function(value) {
+                        return value + '%';
+                    }
+                }
+            },
+            y: {
+                stacked: true,
+                title: {
+                    display: true,
+                    text: 'Société'
+                },
+                ticks: {
+                    autoSkip: false,
+                    maxRotation: 0,
+                    minRotation: 0
+                }
+            }
+        },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        const dataset = context.dataset;
+                        const label = dataset.label || '';
+                        const value = context.raw || 0;
+                        const total = context.chart.data.datasets
+                            .map(ds => ds.data[context.dataIndex])
+                            .reduce((a, b) => a + b, 0);
+
+                        return `${label}: ${value.toFixed(2)}% (${Math.round((value/total)*100)}% du total)`;
+                    },
+                    afterLabel: function(context) {
+                        const societe = context.chart.data.labels[context.dataIndex];
+                        return `Société: ${societe}`;
+                    }
+                }
+            },
+            legend: {
+                display: true,
+                position: 'top',
+                labels: {
+                    boxWidth: 20,
+                    padding: 20
+                },
+                title: {
+                    display: true,
+                    text: 'Destination',
+                    padding: {
+                        top: 10,
+                        bottom: 10
+                    }
                 }
             }
         }
-    });
+    }
+});
 </script>
 {% endblock %}
