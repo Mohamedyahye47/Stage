@@ -10,7 +10,7 @@ from io import BytesIO
 import pandas as pd
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.secret_key = 'yahya'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'pdf'}
 
