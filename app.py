@@ -8,13 +8,14 @@ from werkzeug.utils import secure_filename
 import openpyxl
 from io import BytesIO
 import pandas as pd
+from typing import Dict, Optional, Union
 
 app = Flask(__name__)
 app.secret_key = 'yahya'
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['UPLOAD_FOLDER'] = 'Uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'pdf'}
 
-# Configuration de la base de données
+# Database configuration
 db_config = {
     'host': 'localhost',
     'user': 'root',
@@ -22,22 +23,29 @@ db_config = {
     'database': 'data_upload'
 }
 
-# Définir un filtre personnalisé pour formater les nombres
+
+# Custom filter for number formatting (French format)
 def format_number(value):
     try:
-        # Convertir en float et formater avec des séparateurs de milliers et 2 décimales
-        return "{:,.2f}".format(float(value))
+        return "{:,.2f}".format(float(value)).replace(",", " ").replace(".", ",")
     except (ValueError, TypeError):
-        return "0.00"
+        return "0,00"
 
-# Enregistrer le filtre dans l'environnement Jinja2
+
 app.jinja_env.filters['format_number'] = format_number
+
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
+
 def get_db_connection():
-    return mysql.connector.connect(**db_config)
+    try:
+        return mysql.connector.connect(**db_config)
+    except mysql.connector.Error as err:
+        flash(f'Erreur de connexion à la base de données : {str(err)}', 'danger')
+        raise
+
 
 def extract_invoice_data(pdf_path):
     text = ""
@@ -112,133 +120,169 @@ def extract_invoice_data(pdf_path):
 
     return data
 
+
 def get_dashboard_data():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Obtenir les factures récentes
-    cursor.execute("""
-        SELECT 
-            ot_number,
-            DATE_FORMAT(invoice_date, '%Y-%m-%d') as invoice_date,
-            societe,
-            produit,
-            FORMAT(quantite, 3) as quantite,
-            FORMAT(total_usd, 2) as total_usd,
-            FORMAT(total_sans_fret, 2) as total_sans_fret
-        FROM invoices 
-        ORDER BY invoice_date DESC 
-        LIMIT 10
-    """)
-    invoices = cursor.fetchall()
+    try:
+        # Get recent invoices
+        cursor.execute("""
+            SELECT 
+                ot_number,
+                DATE_FORMAT(invoice_date, '%Y-%m-%d') as invoice_date,
+                societe,
+                produit,
+                quantite,
+                total_usd,
+                total_sans_fret
+            FROM invoices 
+            ORDER BY created_at DESC 
+            LIMIT 10
+        """)
+        invoices = cursor.fetchall()
 
-    # Obtenir les statistiques sommaires
-    cursor.execute("""
-        SELECT 
-            COUNT(*) as total_invoices,
-            SUM(total_usd) as total_value,
-            AVG(total_usd) as avg_value
-        FROM invoices
-    """)
-    stats = cursor.fetchone()
+        # Get summary statistics
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_invoices,
+                SUM(total_usd) as total_value,
+                AVG(total_usd) as avg_value
+            FROM invoices
+        """)
+        stats = cursor.fetchone()
 
-    # Total mensuel pour le graphique
-    cursor.execute("""
-        SELECT 
-            DATE_FORMAT(invoice_date, '%Y-%m') as month,
-            SUM(total_usd) as total
-        FROM invoices
-        GROUP BY month
-        ORDER BY month
-    """)
-    monthly_data = cursor.fetchall() or []
+        # Calculate top société by USD value
+        cursor.execute("""
+            SELECT 
+                societe,
+                SUM(total_usd) as total_usd,
+                (SUM(total_usd) / (SELECT SUM(total_usd) FROM invoices) * 100) as percentage
+            FROM invoices
+            GROUP BY societe
+            ORDER BY total_usd DESC
+            LIMIT 1
+        """)
+        top_societe = cursor.fetchone()
+        stats['top_societe_name'] = top_societe['societe'] if top_societe else 'N/A'
+        stats['top_societe_percent'] = round(top_societe['percentage'], 2) if top_societe else 0
 
-    # Répartition des produits pour le graphique (en pourcentage)
-    cursor.execute("""
-        SELECT 
-            produit,
-            IFNULL(SUM(total_usd), 0) as total
-        FROM invoices
-        GROUP BY produit
-    """)
-    product_data_raw = cursor.fetchall() or []
-    total_usd = sum(float(row['total']) for row in product_data_raw) if product_data_raw else 1  # Éviter division par zéro
-    product_data = [{'produit': row['produit'], 'total': round((float(row['total']) / total_usd * 100), 2)} for row in product_data_raw]
+        # Monthly totals for chart
+        cursor.execute("""
+            SELECT 
+                DATE_FORMAT(invoice_date, '%Y-%m') as month,
+                SUM(total_usd) as total
+            FROM invoices
+            GROUP BY month
+            ORDER BY month
+        """)
+        monthly_data = cursor.fetchall()
 
-    # Données pour les nouveaux graphiques (Pourcentages par Société et Société/Destination)
-    cursor.execute("""
-        SELECT societe, destination, quantite
-        FROM invoices
-    """)
-    graph_data = cursor.fetchall()
+        # Product distribution (by quantity)
+        cursor.execute("""
+            SELECT 
+                produit,
+                SUM(quantite) as total_quantite,
+                SUM(total_usd) as total_usd
+            FROM invoices
+            GROUP BY produit
+        """)
+        product_data_raw = cursor.fetchall()
 
-    # Charger les données dans un DataFrame Pandas pour les calculs
-    df = pd.DataFrame(graph_data)
+        # Calculate percentages by quantity
+        total_quantite = sum(row['total_quantite'] for row in product_data_raw) or 1
+        product_data = [{
+            'produit': row['produit'],
+            'total_quantite': row['total_quantite'],
+            'total_usd': row['total_usd'],
+            'percentage': round((row['total_quantite'] / total_quantite) * 100, 2)
+        } for row in product_data_raw]
 
-    # Calculer les pourcentages par société
-    total_quantite = df['quantite'].sum() if not df['quantite'].empty else 0
-    if total_quantite == 0:
-        societe_labels = []
-        societe_pourcentages = []
-        societe_quantites = []
+        # Company/Destination data
+        cursor.execute("""
+            SELECT societe, destination, quantite, total_usd 
+            FROM invoices
+        """)
+        graph_data = cursor.fetchall()
+
+        # Process with Pandas
+        df = pd.DataFrame(graph_data)
+
+        # Process societe data
+        societe_data = df.groupby('societe').agg({
+            'quantite': 'sum',
+            'total_usd': 'sum'
+        }).reset_index()
+
+        total_quantite = societe_data['quantite'].sum() or 1
+        total_usd = societe_data['total_usd'].sum() or 1
+
+        societe_data['percentage_quantite'] = (societe_data['quantite'] / total_quantite * 100).round(2)
+        societe_data['percentage_usd'] = (societe_data['total_usd'] / total_usd * 100).round(2)
+
+        societe_labels = societe_data['societe'].tolist()
+        societe_pourcentages = societe_data['percentage_quantite'].tolist()
+        societe_usd_pourcentages = societe_data['percentage_usd'].tolist()
+
+        # Process destination data
         datasets = []
-    else:
-        societe_quantites_df = df.groupby('societe')['quantite'].sum().reset_index()
-        societe_quantites_df['pourcentage'] = (societe_quantites_df['quantite'] / total_quantite * 100).round(2)
+        if not df.empty:
+            destinations = df['destination'].unique().tolist()
+            colors = ['#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F']
 
-        # Valider les données pour s'assurer qu'elles sont des nombres
-        societe_labels = societe_quantites_df['societe'].tolist()
-        societe_pourcentages = [float(p) if not pd.isna(p) else 0.0 for p in societe_quantites_df['pourcentage'].tolist()]
-        societe_quantites = [float(q) if not pd.isna(q) else 0.0 for q in societe_quantites_df['quantite'].tolist()]
+            for i, dest in enumerate(destinations):
+                dest_data = df[df['destination'] == dest]
+                dest_percentages = (dest_data.groupby('societe')['quantite'].sum() / total_quantite * 100).round(2)
+                datasets.append({
+                    'label': dest,
+                    'data': [dest_percentages.get(societe, 0) for societe in societe_labels],
+                    'backgroundColor': colors[i % len(colors)]
+                })
 
-        # Calculer les pourcentages par société et destination
-        societe_destination = df.groupby(['societe', 'destination'])['quantite'].sum().reset_index()
-        societe_destination['pourcentage'] = (societe_destination['quantite'] / total_quantite * 100).round(2)
+    finally:
+        cursor.close()
+        conn.close()
 
-        # Préparer les données pour Chart.js (Graphique 2 : Pourcentages par Société et Destination)
-        destinations = df['destination'].unique().tolist()
-        societe_destination_data = {}
-        for societe in societe_labels:
-            societe_destination_data[societe] = {}
-            for dest in destinations:
-                subset = societe_destination[(societe_destination['societe'] == societe) & (societe_destination['destination'] == dest)]
-                societe_destination_data[societe][dest] = subset['pourcentage'].iloc[0] if not subset.empty else 0
-
-        # Préparer les datasets pour le graphique empilé
-        datasets = []
-        colors = ['#4E79A7', '#F28E2B']  # Couleurs pour Nouadhibou et Nouakchott
-        for i, dest in enumerate(destinations):
-            data = [float(societe_destination_data[societe][dest]) if not pd.isna(societe_destination_data[societe][dest]) else 0.0 for societe in societe_labels]
-            datasets.append({
-                'label': dest,
-                'data': data,
-                'backgroundColor': colors[i % len(colors)]
-            })
-
-    # Ajouter des logs pour déboguer les données
-    print("DEBUG - societe_labels:", societe_labels)
-    print("DEBUG - societe_pourcentages:", societe_pourcentages)
-    print("DEBUG - societe_quantites:", societe_quantites)
-    print("DEBUG - datasets:", datasets)
-    print("DEBUG - product_data:", product_data)
-
-    cursor.close()
-    conn.close()
-
-    return invoices, stats, monthly_data, product_data, societe_labels, societe_pourcentages, societe_quantites, datasets
+    return {
+        'invoices': invoices or [],
+        'stats': stats or {
+            'total_invoices': 0,
+            'total_value': 0,
+            'avg_value': 0,
+            'top_societe_name': 'N/A',
+            'top_societe_percent': 0
+        },
+        'monthly_data': monthly_data or [],
+        'product_data': product_data or [],
+        'societe_labels': societe_labels or [],
+        'societe_pourcentages': societe_pourcentages or [],
+        'societe_usd_pourcentages': societe_usd_pourcentages or [],
+        'datasets': datasets or []
+    }
 
 @app.route('/')
 def dashboard():
-    invoices, stats, monthly_data, product_data, societe_labels, societe_pourcentages, societe_quantites, datasets = get_dashboard_data()
-    return render_template('dashboard.html',
-                          invoices=invoices,
-                          stats=stats,
-                          monthly_data=monthly_data,
-                          product_data=product_data,
-                          societe_labels=societe_labels,
-                          societe_pourcentages=societe_pourcentages,
-                          societe_quantites=societe_quantites,
-                          datasets=datasets)
+    try:
+        data = get_dashboard_data()
+        return render_template('dashboard.html', **data)
+    except Exception as e:
+        print(f"Erreur dans la route du tableau de bord : {str(e)}")
+        return render_template('dashboard.html',
+            invoices=[],
+            stats={
+                'total_invoices': 0,
+                'total_value': 0,
+                'avg_value': 0,
+                'top_societe_name': 'N/A',
+                'top_societe_percent': 0
+            },
+            monthly_data=[],
+            product_data=[],
+            societe_labels=[],
+            societe_pourcentages=[],
+            societe_usd_pourcentages=[],
+            datasets=[]
+        )
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
@@ -289,8 +333,8 @@ def upload():
                 return redirect(url_for('dashboard'))
 
             except mysql.connector.Error as err:
-                if err.errno == 1062:  # Duplicate entry error code
-                    flash(f"Erreur: L'ordre de transfert No {invoice_data['ot_number']} existe déjà", 'danger')
+                if err.errno == 1062:
+                    flash(f"Erreur : L'ordre de transfert n° {invoice_data['ot_number']} existe déjà", 'danger')
                 else:
                     flash(f'Erreur de base de données : {str(err)}', 'danger')
                 return redirect(request.url)
@@ -300,8 +344,9 @@ def upload():
 
     return render_template('upload.html')
 
-@app.route('/download_xlsx')
-def download_xlsx():
+
+@app.route('/telecharger_excel')
+def telecharger_excel():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
@@ -322,12 +367,15 @@ def download_xlsx():
     cursor.close()
     conn.close()
 
-    # Créer un fichier XLSX
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Factures"
 
-    headers = ['Numéro OT', 'Date de Facture', 'Destination', 'Société', 'Produit', 'Quantité', 'Prix Unitaire', 'Total USD', 'Fret', 'Total sans Fret']
+    headers = [
+        'N° OT', 'Date de facture', 'Destination', 'Société',
+        'Produit', 'Quantité', 'Prix unitaire', 'Total USD',
+        'Fret', 'Total sans fret'
+    ]
     ws.append(headers)
 
     for invoice in invoices:
@@ -354,6 +402,7 @@ def download_xlsx():
         as_attachment=True,
         download_name='factures.xlsx'
     )
+
 
 if __name__ == '__main__':
     if not os.path.exists(app.config['UPLOAD_FOLDER']):

@@ -3,22 +3,47 @@
 {% block title %}Tableau de Bord{% endblock %}
 
 {% block content %}
+
+<style>
+    /* Ajout des styles pour les modalités */
+    .product-modalites {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 0 15px rgba(0,0,0,0.1);
+        z-index: 100;
+        opacity: 0;
+        transition: opacity 0.2s;
+        pointer-events: none;
+        max-width: 300px;
+    }
+
+    .chart-container:hover .product-modalites {
+        opacity: 1;
+    }
+</style>
+
+
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <h1 class="h3 mb-0 text-gray-800">Tableau de Bord</h1>
-    <a href="{{ url_for('download_xlsx') }}" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm">
+    <a href="{{ url_for('telecharger_excel') }}" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm">
         <i class="fas fa-download fa-sm text-white-50"></i> Télécharger XLSX
     </a>
 </div>
 
 <!-- Cartes de Statistiques -->
 <div class="row">
-    <div class="col-xl-4 col-md-6 mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
         <div class="card border-left-primary shadow h-100 py-2">
             <div class="card-body">
                 <div class="row no-gutters align-items-center">
                     <div class="col mr-2">
                         <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Nombre Total de Factures</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_invoices }}</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.total_invoices | default(0) }}</div>
                     </div>
                     <div class="col-auto">
                         <i class="fas fa-file-invoice fa-2x text-gray-300"></i>
@@ -28,7 +53,7 @@
         </div>
     </div>
 
-    <div class="col-xl-4 col-md-6 mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
         <div class="card border-left-success shadow h-100 py-2">
             <div class="card-body">
                 <div class="row no-gutters align-items-center">
@@ -44,7 +69,7 @@
         </div>
     </div>
 
-    <div class="col-xl-4 col-md-6 mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
         <div class="card border-left-info shadow h-100 py-2">
             <div class="card-body">
                 <div class="row no-gutters align-items-center">
@@ -59,65 +84,124 @@
             </div>
         </div>
     </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Meilleure Société</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.top_societe_name | default('Aucune donnée') }}</div>
+                        <div class="text-xs text-muted mt-1">{{ stats.top_societe_percent | default(0) | round(2) }}% du total</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-trophy fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
-<!-- Graphiques Existants -->
+<!-- Graphiques -->
 <div class="row">
-    <div class="col-xl-8 col-lg-7">
-        <div class="card shadow mb-4">
+    <div class="col-xl-8 col-lg-7 mb-4">
+        <div class="card shadow">
             <div class="card-header py-3">
                 <h6 class="m-0 font-weight-bold text-primary">Total Mensuel (USD)</h6>
             </div>
             <div class="card-body">
-                <div class="chart-area">
-                    <canvas id="monthlyChart" style="max-height: 300px;"></canvas>
+                {% if monthly_data and monthly_data|length > 0 %}
+                <div class="chart-area" style="height: 300px;">
+                    <canvas id="monthlyChart"></canvas>
                 </div>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-chart-line fa-3x mb-3"></i>
+                    <p>Aucune donnée disponible</p>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
 
-    <div class="col-xl-4 col-lg-5">
-        <div class="card shadow mb-4">
+    <div class="col-xl-4 col-lg-5 mb-4">
+    <div class="card shadow">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Répartition des Produits</h6>
+        </div>
+        <div class="card-body">
+            {% if product_data and product_data|length > 0 %}
+            <div class="chart-pie pt-4" style="height: 250px;">
+                <canvas id="productChart"></canvas>
+            </div>
+            <!-- Début des modalités ajoutées -->
+            <div class="mt-4 text-center small">
+                {% for product in product_data %}
+                <span class="mr-2">
+                    <i class="fas fa-circle" style="color: {{ [
+                        '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b'
+                    ][loop.index0 % 5] }}"></i>
+                    {{ product.produit }}
+                </span>
+                {% endfor %}
+            </div>
+            <!-- Fin des modalités ajoutées -->
+            {% else %}
+            <div class="text-center py-5 text-muted">
+                <i class="fas fa-pie-chart fa-3x mb-3"></i>
+                <p>Aucune donnée disponible</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+</div>
+
+<div class="row">
+    <div class="col-xl-12 col-lg-12 mb-4">
+        <div class="card shadow">
             <div class="card-header py-3">
-                <h6 class="m-0 font-weight-bold text-primary">Répartition des Produits (%)</h6>
+                <h6 class="m-0 font-weight-bold text-primary">Répartition par Société</h6>
             </div>
             <div class="card-body">
-                <div class="chart-pie pt-4">
-                    <canvas id="productChart" style="max-height: 300px;"></canvas>
+                {% if societe_labels and societe_labels|length > 0 %}
+                <div style="overflow-x: auto;">
+                    <div style="min-width: {{ societe_labels|length * 30 }}px; height: 500px;">
+                        <canvas id="societeChart"></canvas>
+                    </div>
                 </div>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-chart-bar fa-3x mb-3"></i>
+                    <p>Aucune donnée disponible</p>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
 </div>
 
-<!-- Nouveaux Graphiques -->
-<!-- Graphique 1 : Pourcentages par Société -->
 <div class="row">
-    <div class="col-xl-12 col-lg-12">
-        <div class="card shadow mb-4">
+    <div class="col-xl-12 col-lg-12 mb-4">
+        <div class="card shadow">
             <div class="card-header py-3">
-                <h6 class="m-0 font-weight-bold text-primary">Pourcentages des Quantités par Société</h6>
+                <h6 class="m-0 font-weight-bold text-primary">Répartition par Société et Destination</h6>
             </div>
             <div class="card-body">
-                <div class="chart-area">
-                    <canvas id="societeChart" style="max-height: 300px;"></canvas>
+                {% if datasets and datasets|length > 0 %}
+                <div style="overflow-x: auto;">
+                    <div style="min-width: {{ societe_labels|length * 30 if societe_labels else 600 }}px; height: 500px;">
+                        <canvas id="societeDestinationChart"></canvas>
+                    </div>
                 </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Graphique 2 : Pourcentages par Société et Destination -->
-<div class="row">
-    <div class="col-xl-12 col-lg-12">
-        <div class="card shadow mb-4">
-            <div class="card-header py-3">
-                <h6 class="m-0 font-weight-bold text-primary">Pourcentages des Quantités par Société et Destination</h6>
-            </div>
-            <div class="card-body">
-                <div class="chart-area">
-                    <canvas id="societeDestinationChart" style="max-height: 300px;"></canvas>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-chart-pie fa-3x mb-3"></i>
+                    <p>Aucune donnée disponible</p>
                 </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -125,274 +209,267 @@
 
 <!-- Tableau des Factures Récentes -->
 <div class="row">
-    <div class="col-lg-12">
-        <div class="card shadow mb-4">
+    <div class="col-lg-12 mb-4">
+        <div class="card shadow">
             <div class="card-header py-3">
                 <h6 class="m-0 font-weight-bold text-primary">Factures Récentes</h6>
             </div>
             <div class="card-body">
+                {% if invoices and invoices|length > 0 %}
                 <div class="table-responsive">
-                    <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                    <table class="table table-bordered" width="100%" cellspacing="0">
                         <thead>
                             <tr>
                                 <th>Numéro OT</th>
-                                <th>Date de Facture</th>
+                                <th>Date</th>
                                 <th>Société</th>
                                 <th>Produit</th>
                                 <th>Quantité (TM)</th>
                                 <th>Total (USD)</th>
-                                <th>Total sans Fret (USD)</th>
+                                <th>Sans Fret (USD)</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for invoice in invoices %}
                             <tr>
-                                <td>{{ invoice.ot_number }}</td>
-                                <td>{{ invoice.invoice_date }}</td>
-                                <td>{{ invoice.societe }}</td>
-                                <td>{{ invoice.produit }}</td>
-                                <td>{{ invoice.quantite }}</td>
-                                <td>${{ invoice.total_usd }}</td>
-                                <td>${{ invoice.total_sans_fret }}</td>
+                                <td>{{ invoice.ot_number | default('N/A') }}</td>
+                                <td>{{ invoice.invoice_date | default('N/A') }}</td>
+                                <td>{{ invoice.societe | default('N/A') }}</td>
+                                <td>{{ invoice.produit | default('N/A') }}</td>
+                                <td>{{ invoice.quantite | default(0) | format_number }}</td>
+                                <td>${{ invoice.total_usd | default(0) | format_number }}</td>
+                                <td>
+                                    {% if invoice.total_sans_fret %}
+                                        ${{ invoice.total_sans_fret | format_number }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-file-invoice fa-3x mb-3"></i>
+                    <p>Aucune facture disponible</p>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
 </div>
 
-<!-- Charger Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-
 <script>
-    // Déboguer les données transmises
-    console.log("societe_labels:", {{ societe_labels | tojson }});
-    console.log("societe_pourcentages:", {{ societe_pourcentages | tojson }});
-    console.log("societe_quantites:", {{ societe_quantites | tojson }});
-    console.log("datasets:", {{ datasets | tojson }});
-    console.log("product_data:", {{ product_data | tojson }});
-
-    // Graphique : Total Mensuel
-    const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
-    new Chart(monthlyCtx, {
-        type: 'line',
-        data: {
-            labels: {{ monthly_data | map(attribute='month') | list | tojson }},
-            datasets: [{
-                label: 'Total USD',
-                data: {{ monthly_data | map(attribute='total') | list | tojson }},
-                fill: false,
-                borderColor: '#4e73df',
-                tension: 0.1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                xAxes: [{
-                    title: {
-                        display: true,
-                        text: 'Mois'
-                    }
-                }],
-                yAxes: [{
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Total (USD)'
-                    }
+document.addEventListener('DOMContentLoaded', function() {
+    // Graphique Mensuel (inchangé)
+    {% if monthly_data and monthly_data|length > 0 %}
+    const monthlyCtx = document.getElementById('monthlyChart');
+    if (monthlyCtx) {
+        new Chart(monthlyCtx, {
+            type: 'line',
+            data: {
+                labels: {{ monthly_data | map(attribute='month') | list | tojson }},
+                datasets: [{
+                    label: 'Total USD',
+                    data: {{ monthly_data | map(attribute='total') | list | tojson }},
+                    fill: false,
+                    borderColor: '#4e73df',
+                    backgroundColor: '#4e73df',
+                    tension: 0.1
                 }]
-            }
-        }
-    });
-
-    // Graphique : Répartition des Produits
-    const productCtx = document.getElementById('productChart').getContext('2d');
-    new Chart(productCtx, {
-        type: 'doughnut',
-        data: {
-            labels: {{ product_data | map(attribute='produit') | list | tojson }},
-            datasets: [{
-                label: 'Pourcentage des Produits (%)',
-                data: {{ product_data | map(attribute='total') | list | tojson }},
-                backgroundColor: [
-                    '#4e73df',
-                    '#1cc88a',
-                    '#36b9cc',
-                    '#f6c23e',
-                    '#e74a3b'
-                ],
-                borderColor: [
-                    '#4e73df',
-                    '#1cc88a',
-                    '#36b9cc',
-                    '#f6c23e',
-                    '#e74a3b'
-                ],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'top',
-                },
-                title: {
-                    display: true,
-                    text: 'Répartition des Produits (%)'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.label || '';
-                            let value = context.parsed || 0;
-                            return label + ': ' + value.toFixed(2) + '%';
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    // Graphique 1 : Pourcentages par Société
-    const societeCtx = document.getElementById('societeChart').getContext('2d');
-    new Chart(societeCtx, {
-        type: 'bar',
-        data: {
-            labels: {{ societe_labels | tojson }},
-            datasets: [{
-                label: 'Pourcentage des Quantités',
-                data: {{ societe_pourcentages | tojson }},
-                backgroundColor: '#4E79A7',
-                borderColor: '#4E79A7',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            scales: {
-                xAxes: [{
-                    ticks: {
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Mois' }
+                    },
+                    y: {
                         beginAtZero: true,
-                        suggestedMax: 100,
-                        callback: function(value) {
-                            return value + '%';
+                        title: { display: true, text: 'Total (USD)' },
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toLocaleString();
+                            }
                         }
-                    },
-                    scaleLabel: {
-                        display: true,
-                        labelString: 'Pourcentage (%)'
                     }
-                }],
-                yAxes: [{
-                    scaleLabel: {
-                        display: true,
-                        labelString: 'Société'
-                    }
+                }
+            }
+        });
+    }
+    {% endif %}
+
+    // Graphique Produits (Solution corrigée)
+    {% if product_data and product_data|length > 0 %}
+    const productCtx = document.getElementById('productChart');
+    if (productCtx) {
+        new Chart(productCtx, {
+            type: 'doughnut',
+            data: {
+                labels: {{ product_data | map(attribute='produit') | list | tojson }},
+                datasets: [{
+                    data: {{ product_data | map(attribute='percentage') | list | tojson }},
+                    backgroundColor: [
+                        '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
+                        '#858796', '#5a5c69', '#3a3b45', '#2e59d9', '#17a673'
+                    ],
+                    borderWidth: 1
                 }]
             },
-            plugins: {
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            let value = context.parsed.x || 0;
-                            return label + ': ' + value.toFixed(2) + '%';
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || 'Produit inconnu';
+                                const value = parseFloat(context.parsed || 0).toFixed(2);
+                                return `${label}: ${value}%`;
+                            }
                         }
                     }
                 },
-                legend: {
-                    display: false
-                }
+                cutout: '60%'
             }
-        }
-    });
-
-    // Graphique 2 : Pourcentages par Société et Destination (Empilé)
-const societeDestinationCtx = document.getElementById('societeDestinationChart').getContext('2d');
-new Chart(societeDestinationCtx, {
-    type: 'bar',
-    data: {
-        labels: {{ societe_labels | tojson }},
-        datasets: {{ datasets | tojson }}
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        indexAxis: 'y',
-        scales: {
-            x: {
-                stacked: true,
-                beginAtZero: true,
-                max: 100,
-                title: {
-                    display: true,
-                    text: 'Pourcentage (%)'
-                },
-                ticks: {
-                    callback: function(value) {
-                        return value + '%';
-                    }
-                }
-            },
-            y: {
-                stacked: true,
-                title: {
-                    display: true,
-                    text: 'Société'
-                },
-                ticks: {
-                    autoSkip: false,
-                    maxRotation: 0,
-                    minRotation: 0
-                }
-            }
-        },
-        plugins: {
-            tooltip: {
-                callbacks: {
-                    label: function(context) {
-                        const dataset = context.dataset;
-                        const label = dataset.label || '';
-                        const value = context.raw || 0;
-                        const total = context.chart.data.datasets
-                            .map(ds => ds.data[context.dataIndex])
-                            .reduce((a, b) => a + b, 0);
-
-                        return `${label}: ${value.toFixed(2)}% (${Math.round((value/total)*100)}% du total)`;
-                    },
-                    afterLabel: function(context) {
-                        const societe = context.chart.data.labels[context.dataIndex];
-                        return `Société: ${societe}`;
-                    }
-                }
-            },
-            legend: {
-                display: true,
-                position: 'top',
-                labels: {
-                    boxWidth: 20,
-                    padding: 20
-                },
-                title: {
-                    display: true,
-                    text: 'Destination',
-                    padding: {
-                        top: 10,
-                        bottom: 10
-                    }
-                }
-            }
-        }
+        });
     }
+    {% endif %}
+
+    // Graphique Sociétés (inchangé)
+    {% if societe_labels and societe_labels|length > 0 %}
+    const societeCtx = document.getElementById('societeChart');
+    if (societeCtx) {
+        new Chart(societeCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ societe_labels | tojson }},
+                datasets: [{
+                    label: 'Pourcentage des Quantités (%)',
+                    data: {{ societe_pourcentages | tojson }},
+                    backgroundColor: '#4E79A7',
+                    borderColor: '#4E79A7',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Pourcentage (%)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Société'
+                        },
+                        ticks: {
+                            autoSkip: false,
+                            font: {
+                                size: 10
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.x.toFixed(2) + '%';
+                            }
+                        }
+                    },
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+    }
+    {% endif %}
+
+    // Graphique Sociétés et Destinations (inchangé)
+    {% if datasets and datasets|length > 0 %}
+    const societeDestinationCtx = document.getElementById('societeDestinationChart');
+    if (societeDestinationCtx) {
+        new Chart(societeDestinationCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ societe_labels | tojson }},
+                datasets: {{ datasets | tojson }}
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        stacked: true,
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Pourcentage (%)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    },
+                    y: {
+                        stacked: true,
+                        title: {
+                            display: true,
+                            text: 'Société'
+                        },
+                        ticks: {
+                            autoSkip: false,
+                            font: {
+                                size: 10
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.x.toFixed(2) + '%';
+                            }
+                        }
+                    },
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 12,
+                            font: {
+                                size: 10
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    {% endif %}
 });
 </script>
 {% endblock %}
