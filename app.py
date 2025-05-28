@@ -27,7 +27,7 @@ db_config = {
 # Custom filter for number formatting (French format)
 def format_number(value):
     try:
-        return "{:,.2f}".format(float(value)).replace(",", " ").replace(".", ",")
+        return "{:,.2f}".format(float(value)).replace(",", " ").replace(".", ",").replace("'", " ")
     except (ValueError, TypeError):
         return "0,00"
 
@@ -54,6 +54,27 @@ def extract_invoice_data(pdf_path):
         for page in pdf_reader.pages:
             text += page.extract_text() + "\n"
 
+    # NEW IMPROVED OT NUMBER EXTRACTION
+    def extract_ot_number(text):
+        """Robust OT number extraction with multiple fallback patterns"""
+        patterns = [
+            r'Ordre\s+de\s+transfert\s*No\s*[:=-]?\s*([A-Z]?\d{4,})',  # Standard format with possible prefix
+            r'OT\s*[:]?\s*(\d{4,})',  # Short form
+            r'N°\s*Ordre\s*:\s*(\d{4,})',  # Administrative format
+            r'Addax\s+ref\.\s*(\d{4,})',  # Addax reference
+            r'FACTURE\s+COMMERCIALE\s+No\s+[A-Z]?(\d{4,})'  # Invoice number fallback
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                # Clean and standardize to 5 digits
+                ot_num = re.sub(r'[^0-9]', '', match.group(1))
+                return ot_num.zfill(5) if len(ot_num) >= 4 else None  # Ensure minimum 4 digits
+
+        return None
+
+    # REST OF THE ORIGINAL CODE REMAINS EXACTLY THE SAME
     # Extraction améliorée du nom de l'entreprise
     company_patterns = [
         r'STAR OIL MAURITANIE',
@@ -85,10 +106,25 @@ def extract_invoice_data(pdf_path):
     produit = product_match.group(1).strip() if product_match else None
 
     # Extraction améliorée de la quantité
-    quantite_match = re.search(r'QUANTITE\s*\|\s*([\d\.,]+)', text)
-    if not quantite_match:
-        quantite_match = re.search(r'Quantité \(Tonnes Métriques\)\s*([\d\.,]+)', text)
-    quantite = float(quantite_match.group(1).replace(',', '').replace("'", "")) if quantite_match else None
+    quantite_match = re.search(
+        r'(?:QUANTITE\s*\|\s*|Quantité \(Tonnes Métriques\)\s*|Quantity:\s*)([\d\',\.]+)\s*(?:MT|Tonnes|TM)?',
+        text,
+        re.IGNORECASE
+    )
+
+    if quantite_match:
+        try:
+            # Handle different number formats: 1'700.000 or 1,700.000 or 1700.000
+            quantite_str = quantite_match.group(1)
+            quantite = float(
+                quantite_str.replace("'", "")
+                .replace(",", "")
+                .replace(" ", "")
+            )
+        except (ValueError, AttributeError):
+            quantite = None
+    else:
+        quantite = None
 
     # Calcul amélioré du total sans fret
     total_usd_match = re.search(r'Montant total de la facture\s*\$([\d\',]+\.\d{2})', text)
@@ -100,18 +136,45 @@ def extract_invoice_data(pdf_path):
     # Calcul du total sans fret si tous les composants sont présents
     total_sans_fret = round(total_usd - (fret * quantite), 2) if total_usd and fret and quantite else None
 
+    # Extraction de la date avec gestion d'erreur robuste
+    invoice_date = None
+    try:
+        date_match = re.search(r'Date du Bordereau de cession en bac:\s*(\d{2}\.\d{2}\.\d{4})', text)
+        if date_match:
+            date_str = date_match.group(1)
+            # Ensure we have a string and not already a date object
+            if isinstance(date_str, str):
+                invoice_date = datetime.strptime(date_str, '%d.%m.%Y').date()
+            else:
+                # If it's already a date object, use it directly
+                invoice_date = date_str if hasattr(date_str, 'year') else None
+    except (ValueError, AttributeError, TypeError) as e:
+        print(f"Error parsing date: {e}")
+        # Try alternative date patterns as fallback
+        try:
+            # Try with slash separator
+            date_match_alt = re.search(r'Date du Bordereau de cession en bac:\s*(\d{2}/\d{2}/\d{4})', text)
+
+            if date_match_alt:
+                date_str_alt = date_match_alt.group(1)
+                if isinstance(date_str_alt, str):
+                    invoice_date = datetime.strptime(date_str_alt, '%d/%m/%Y').date()
+        except:
+            invoice_date = None
+
+
+
     data = {
-        'ot_number': re.search(r'Ordre de transfert No:\s*(\d+)', text).group(1) if re.search(
-            r'Ordre de transfert No:\s*(\d+)', text) else None,
-        'invoice_date': re.search(r'Genève, le (\d{2}\.\d{2}\.\d{4})', text).group(1) if re.search(
-            r'Genève, le (\d{2}\.\d{2}\.\d{4})', text) else None,
+        'ot_number': extract_ot_number(text),  # USING THE NEW IMPROVED EXTRACTION
+        'invoice_date': invoice_date,
         'destination': re.search(r'Terminal:\s*([^\n]+)', text).group(1).split()[0] if re.search(
             r'Terminal:\s*([^\n]+)', text) else None,
         'societe': societe,
         'produit': produit,
         'quantite': quantite,
         'prix_unitaire': float(
-            re.search(r'Prix Unitaire\s+\$([\d\',]+\.\d{2})', text).group(1).replace("'", "").replace(",", "")) if re.search(
+            re.search(r'Prix Unitaire\s+\$([\d\',]+\.\d{2})', text).group(1).replace("'", "").replace(",",
+                                                                                                      "")) if re.search(
             r'Prix Unitaire\s+\$([\d\',]+\.\d{2})', text) else None,
         'total_usd': total_usd,
         'fret': fret,
@@ -308,7 +371,7 @@ def upload():
                 invoice_data['societe'] = societe or invoice_data['societe']
 
                 if invoice_data['invoice_date']:
-                    invoice_date = datetime.strptime(invoice_data['invoice_date'], '%d.%m.%Y').date()
+                    invoice_date = invoice_data['invoice_date']
                 else:
                     invoice_date = None
 
