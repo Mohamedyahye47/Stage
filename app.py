@@ -8,7 +8,6 @@ from werkzeug.utils import secure_filename
 import openpyxl
 from io import BytesIO
 import pandas as pd
-from typing import Dict, Optional, Union
 
 app = Flask(__name__)
 app.secret_key = 'yahya'
