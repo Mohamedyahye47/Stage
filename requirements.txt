@@ -1,2 +1,8 @@
-Flask PyPDF2 mysql-connector-python Werkzeug openpyxl pandas gunicorn
-
+Flask
+PyPDF2
+openpyxl
+pandas
+numpy
+scipy
+mysql-connector-python
+Werkzeug
