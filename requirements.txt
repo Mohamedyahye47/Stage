@@ -2,7 +2,7 @@ Flask
 flask-bcrypt
 flask-login
 flask-wtf
-mysql-connector-python
+psycopg2-binary
 PyPDF2
 openpyxl
 pandas
