@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
-#csrf = CSRFProtect(app)  # Commented out to disable CSRF
 app.config['WTF_CSRF_ENABLED'] = False  # Disable CSRF protection for now
 
 # Security: Replace with a secure random key in production
@@ -56,13 +55,13 @@ def load_user(user_id):
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, username, photo_profil 
+            SELECT id, username, photo_profil, is_admin 
             FROM users WHERE id = %s
         """, (user_id,))
         user_data = cursor.fetchone()
 
         if user_data:
-            user = User(user_data[0], is_admin=(user_data[0] == 2))
+            user = User(user_data[0], is_admin=user_data[3])
             user.username = user_data[1]
             user.photo_profil = user_data[2]
             logger.info(f"Loaded user {user_id} with is_admin={user.is_admin}")
@@ -78,7 +77,7 @@ def load_user(user_id):
 @app.route('/users')
 @login_required
 def user_management():
-    if current_user.id != 2:  # Use ID check instead of is_admin
+    if not current_user.is_admin:
         logger.warning(f"Non-admin user ID {current_user.id} attempted to access user_management")
         flash('Accès refusé. Seule l\'admin peut gérer les utilisateurs.', 'danger')
         return redirect(url_for('dashboard'))
@@ -101,7 +100,7 @@ def user_management():
 @app.route('/delete_account/<int:user_id>', methods=['POST'])
 @login_required
 def delete_account(user_id):
-    if current_user.id != 2:  # Use ID check instead of is_admin
+    if not current_user.is_admin:
         logger.warning(f"Non-admin user ID {current_user.id} attempted to delete user ID {user_id}")
         flash('Accès refusé. Seule l\'admin peut supprimer des comptes.', 'danger')
         return redirect(url_for('dashboard'))
@@ -150,7 +149,7 @@ def delete_account(user_id):
 def get_connection():
     try:
         conn = psycopg2.connect(
-            dbname="data_upload_tyxv",
+            dbname="data_upload",
             user="data_upload_tyxv_user",
             password="jThqtSY0OYRMgQb2bxLjZONnzrXgN0K4",
             host="dpg-d12sk1je5dus73cp28qg-a",
@@ -249,6 +248,7 @@ def extract_invoice_data(pdf_path):
         try:
             quantite_str = quantite_match.group(1)
             quantite = float(quantite_str.replace("'", "").replace(",", "").replace(" ", ""))
+            quantite = round(quantite, 3)  # Match DECIMAL(10,3)
         except (ValueError, AttributeError):
             quantite = None
 
@@ -283,11 +283,11 @@ def extract_invoice_data(pdf_path):
             r'Terminal:\s*([^\n]+)', text) else None,
         'societe': societe,
         'produit': produit,
-        'quantite': quantite or 0,
-        'prix_unitaire': float(
+        'quantite': quantite,
+        'prix_unitaire': round(float(
             re.search(r'Prix Unitaire\s+\$([\d\',]+\.\d{2})', text).group(1).replace("'", "").replace(",", "")
-        ) if re.search(r'Prix Unitaire\s+\$([\d\',]+\.\d{2})', text) else None,
-        'total_usd': total_usd or 0,
+        ), 2) if re.search(r'Prix Unitaire\s+\$([\d\',]+\.\d{2})', text) else None,
+        'total_usd': total_usd,
         'fret': fret,
         'total_sans_fret': total_sans_fret
     }
@@ -695,7 +695,7 @@ def admin_required(f):
         if not current_user.is_authenticated:
             flash('Veuillez vous connecter d\'abord.', 'danger')
             return redirect(url_for('login'))
-        if current_user.id != 2:
+        if not current_user.is_admin:
             flash('Accès refusé. Seule l\'admin est autorisé.', 'danger')
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
@@ -717,12 +717,12 @@ def login():
         try:
             conn = get_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT id, password FROM users WHERE email = %s", (email,))
+            cursor.execute("SELECT id, password, is_admin FROM users WHERE email = %s", (email,))
             user = cursor.fetchone()
 
             if user and bcrypt.check_password_hash(user[1], password):
                 session['user_id'] = user[0]
-                login_user(User(user[0], is_admin=(user[0] == 2)))
+                login_user(User(user[0], is_admin=user[2]))
                 logger.info(f"User ID {user[0]} logged in successfully")
                 flash('Connexion réussie !', 'success')
                 next_page = request.args.get('next')
@@ -865,6 +865,13 @@ def upload():
                 invoice_data = extract_invoice_data(filepath)
                 invoice_data['societe'] = societe or invoice_data['societe']
                 invoice_date = invoice_data['invoice_date']
+                produit = invoice_data['produit']
+
+                # Validate required fields
+                if not invoice_data['ot_number'] or not invoice_date or not invoice_data['societe'] or not produit:
+                    logger.warning(f"User ID {current_user.id} uploaded invalid invoice data")
+                    flash('Données de facture invalides : OT, date, société et produit sont requis.', 'danger')
+                    return redirect(request.url)
 
                 conn = get_connection()
                 cursor = conn.cursor()
@@ -874,9 +881,15 @@ def upload():
                         quantite, prix_unitaire, total_usd, fret, total_sans_fret
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    invoice_data['ot_number'], invoice_date, invoice_data['destination'],
-                    invoice_data['societe'], invoice_data['produit'], invoice_data['quantite'],
-                    invoice_data['prix_unitaire'], invoice_data['total_usd'], invoice_data['fret'],
+                    invoice_data['ot_number'][:20],  # Truncate to match VARCHAR(20)
+                    invoice_date,
+                    invoice_data['destination'],
+                    invoice_data['societe'][:100],  # Truncate to match VARCHAR(100)
+                    produit[:100],  # Truncate to match VARCHAR(100)
+                    invoice_data['quantite'],
+                    invoice_data['prix_unitaire'],
+                    invoice_data['total_usd'],
+                    invoice_data['fret'],
                     invoice_data['total_sans_fret']
                 ))
                 conn.commit()
