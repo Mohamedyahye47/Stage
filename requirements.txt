@@ -1,8 +1,11 @@
 Flask
+flask-bcrypt
+flask-login
+flask-wtf
+mysql-connector-python
 PyPDF2
 openpyxl
 pandas
 numpy
 scipy
-mysql-connector-python
 Werkzeug
