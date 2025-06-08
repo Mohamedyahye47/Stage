@@ -26,7 +26,7 @@ bcrypt = Bcrypt(app)
 app.config['WTF_CSRF_ENABLED'] = False  # Disable CSRF protection for now
 
 # Security: Replace with a secure random key in production
-app.secret_key = os.urandom(24)
+app.secret_key = os.environ.get('FLASK_SECRET', os.urandom(24))
 app.config['UPLOAD_FOLDER'] = 'Uploads'
 app.config['PROFILE_UPLOAD_FOLDER'] = 'static/uploads/profiles'
 app.config['ALLOWED_EXTENSIONS'] = {'pdf'}
@@ -156,11 +156,12 @@ def delete_account(user_id):
 
 # Database configuration
 db_config = {
-    'host': 'localhost',
-    'user': 'root',
-    'password': 'MedYahya47!!',
-    'database': 'data_upload'
+    'host': os.environ.get('MYSQL_HOST', 'localhost'),
+    'user': os.environ.get('MYSQL_USER', 'root'),
+    'password': os.environ.get('MYSQL_PASSWORD', 'MedYahya47!!'),
+    'database': os.environ.get('MYSQL_DB', 'data_upload')
 }
+
 
 # Custom filter for number formatting (French format)
 def format_number(value):
