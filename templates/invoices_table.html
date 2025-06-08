@@ -1,0 +1,41 @@
+<table class="table table-bordered table-hover">
+    <thead class="thead-light">
+        <tr>
+            <th>N° OT</th>
+            <th>Date</th>
+            <th>Société</th>
+            <th>Produit</th>
+            <th>Quantité (TM)</th>
+            <th>Total (USD)</th>
+            <th>Sans Fret (USD)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for invoice in invoices %}
+        <tr>
+            <td>{{ invoice.ot_number | default('N/A') }}</td>
+            <td>{{ invoice.invoice_date | default('N/A') }}</td>
+            <td>{{ invoice.societe | default('N/A') }}</td>
+            <td>{{ invoice.produit | default('N/A') }}</td>
+            <td class="text-right">{{ invoice.quantite | default(0) | format_number }}</td>
+            <td class="text-right">${{ invoice.total_usd | default(0) | format_number }}</td>
+            <td class="text-right">
+                {% if invoice.total_sans_fret %}
+                    ${{ invoice.total_sans_fret | format_number }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="d-flex justify-content-between mt-3">
+    {% if offset > 0 %}
+        <a href="#" class="btn btn-secondary load-previous" data-offset="{{ offset - 10 }}" data-q="{{ search_query }}" data-month="{{ selected_month }}">Précédent</a>
+    {% endif %}
+    {% if offset + 10 < total_count %}
+        <a href="#" class="btn btn-primary load-more" data-offset="{{ offset + 10 }}" data-q="{{ search_query }}" data-month="{{ selected_month }}">Suivant</a>
+    {% endif %}
+</div>

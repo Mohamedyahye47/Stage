@@ -81,3 +81,32 @@ body {
 .btn:hover {
     background: #2980b9;
 }
+
+/* Custom Topbar Styles */
+.navbar-search {
+    width: 25rem;
+}
+
+.navbar-search .input-group {
+    width: 100%;
+}
+
+.navbar-search .form-control {
+    padding: 0.5rem 1rem;
+}
+
+.navbar-search .btn {
+    padding: 0.5rem 1rem;
+}
+
+.img-profile {
+    height: 2rem;
+    width: 2rem;
+}
+
+@media (max-width: 768px) {
+    .navbar-search {
+        width: 100%;
+        margin: 0.5rem 1rem;
+    }
+}

@@ -58,9 +58,21 @@
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <h1 class="h3 mb-0 text-gray-800">Tableau de Bord des Factures Pétrolières</h1>
-    <a href="{{ url_for('telecharger_excel') }}" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm">
-        <i class="fas fa-download fa-sm text-white-50"></i> Télécharger Excel
-    </a>
+    <div class="d-flex align-items-center">
+        <!-- Month Selection Dropdown -->
+        <form class="form-inline mr-3" action="{{ url_for('dashboard') }}" method="GET">
+            <select name="month" class="form-control mr-2" onchange="this.form.submit()">
+                <option value="">Tous les mois</option>
+                {% for month in available_months %}
+                <option value="{{ month }}" {% if selected_month == month %}selected{% endif %}>{{ month }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        <!-- Download Button -->
+        <a href="{{ url_for('telecharger_excel', month=selected_month) }}" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm">
+            <i class="fas fa-download fa-sm text-white-50"></i> Télécharger Excel
+        </a>
+    </div>
 </div>
 
 <!-- Cartes de Statistiques -->
@@ -216,11 +228,10 @@
                 <div class="chart-container">
                     <canvas id="societeDestinationChart"></canvas>
                 </div>
-
                 {% else %}
                 <div class="text-center py-5 text-muted">
                     <i class="fas fa-chart-bar fa-3x mb-3"></i>
-                    <p>Aucune donnée société/destination disponible</p>
+                    <p>Aucune données société/destination disponible</p>
                 </div>
                 {% endif %}
             </div>
@@ -244,7 +255,6 @@
                 <div class="chart-container">
                     <canvas id="productSocieteChart"></canvas>
                 </div>
-
                 {% else %}
                 <div class="text-center py-5 text-muted">
                     <i class="fas fa-chart-bar fa-3x mb-3"></i>
@@ -257,48 +267,61 @@
     </div>
 </div>
 
+<!-- Nouveau Graphique : Répartition des Produits par Destination -->
+<div class="row">
+    <div class="col-xl-12 col-lg-12 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Répartition des Produits par Destination</h6>
+                {% if cramers_v_produit_destination is not none %}
+                <span class="cramers-v-badge">
+                    <i class="fas fa-calculator mr-1"></i> Cramér's V: {{ cramers_v_produit_destination|round(3) }}
+                </span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if produit_destination_datasets and produit_destination_datasets|length > 0 %}
+                <div class="chart-container" style="overflow-y: auto; max-height: 500px;">
+                    <canvas id="produitDestinationChart"></canvas>
+                </div>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-chart-bar fa-3x mb-3"></i>
+                    <p>Aucune données produit/destination disponible</p>
+                    <small>Nécessite plusieurs produits et destinations avec des transactions</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Tableau des Factures Récentes -->
 <div class="row">
     <div class="col-lg-12 mb-4">
         <div class="card shadow">
-            <div class="card-header py-3">
+            <!-- Card Header with Title and Search -->
+            <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap" style="background-color: #f8f9fc; border-bottom: 1px solid #e3e6f0;">
                 <h6 class="m-0 font-weight-bold text-primary">10 Dernières Factures</h6>
+                <form class="form-inline" action="{{ url_for('search_invoices') }}" method="GET">
+                    <div class="input-group">
+                        <input type="text" name="q" class="form-control small border border-0 bg-white" style="background-color: #ffffff;" placeholder="Rechercher..." aria-label="Search">
+                        <div class="input-group-append">
+                            <button class="btn btn-primary px-3" type="submit" style="height: 38px;">
+                                <i class="fas fa-search fa-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
             </div>
+
+            <!-- Card Body with Table -->
             <div class="card-body">
                 {% if invoices and invoices|length > 0 %}
                 <div class="table-responsive">
-                    <table class="table table-bordered table-hover">
-                        <thead class="thead-light">
-                            <tr>
-                                <th>N° OT</th>
-                                <th>Date</th>
-                                <th>Société</th>
-                                <th>Produit</th>
-                                <th>Quantité (TM)</th>
-                                <th>Total (USD)</th>
-                                <th>Sans Fret (USD)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for invoice in invoices %}
-                            <tr>
-                                <td>{{ invoice.ot_number | default('N/A') }}</td>
-                                <td>{{ invoice.invoice_date | default('N/A') }}</td>
-                                <td>{{ invoice.societe | default('N/A') }}</td>
-                                <td>{{ invoice.produit | default('N/A') }}</td>
-                                <td class="text-right">{{ invoice.quantite | default(0) | format_number }}</td>
-                                <td class="text-right">${{ invoice.total_usd | default(0) | format_number }}</td>
-                                <td class="text-right">
-                                    {% if invoice.total_sans_fret %}
-                                        ${{ invoice.total_sans_fret | format_number }}
-                                    {% else %}
-                                        N/A
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                    <div id="invoices-table-container">
+                        {{ table_html | safe }}
+                    </div>
                 </div>
                 {% else %}
                 <div class="text-center py-5 text-muted">
@@ -312,6 +335,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Graphique Mensuel
@@ -350,24 +374,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 scales: {
                     x: {
                         grid: { display: false },
-                        title: {
-                            display: true,
-                            text: 'Mois',
-                            font: { weight: 'bold' }
-                        }
+                        title: { display: true, text: 'Mois', font: { weight: 'bold' } }
                     },
                     y: {
                         beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Montant (USD)',
-                            font: { weight: 'bold' }
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                return '$' + value.toLocaleString();
-                            }
-                        }
+                        title: { display: true, text: 'Montant (USD)', font: { weight: 'bold' } },
+                        ticks: { callback: function(value) { return '$' + value.toLocaleString(); } }
                     }
                 }
             }
@@ -385,9 +397,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 labels: {{ product_data | map(attribute='produit') | list | tojson }},
                 datasets: [{
                     data: {{ product_data | map(attribute='percentage') | list | tojson }},
-                    backgroundColor: [
-                        '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b'
-                    ],
+                    backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b'],
                     borderWidth: 1,
                     hoverOffset: 10
                 }]
@@ -438,28 +448,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         beginAtZero: true,
                         max: 100,
                         grid: { display: false },
-                        title: {
-                            display: true,
-                            text: 'Pourcentage (%)',
-                            font: { weight: 'bold' }
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                return value + '%';
-                            }
-                        }
+                        title: { display: true, text: 'Pourcentage (%)', font: { weight: 'bold' } },
+                        ticks: { callback: function(value) { return value + '%'; } }
                     },
                     y: {
                         grid: { display: false },
-                        title: {
-                            display: true,
-                            text: 'Société',
-                            font: { weight: 'bold' }
-                        },
-                        ticks: {
-                            autoSkip: false,
-                            font: { size: 11 }
-                        }
+                        title: { display: true, text: 'Société', font: { weight: 'bold' } },
+                        ticks: { autoSkip: false, font: { size: 11 } }
                     }
                 },
                 plugins: {
@@ -495,33 +490,22 @@ document.addEventListener('DOMContentLoaded', function() {
                     x: {
                         stacked: true,
                         max: 100,
-                        title: {
-                            display: true,
-                            text: 'Pourcentage (%)',
-                            font: { weight: 'bold' }
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                return value + '%';
-                            }
-                        }
+                        title: { display: true, text: 'Pourcentage (%)', font: { weight: 'bold' } },
+                        ticks: { callback: function(value) { return value + '%'; } }
                     },
                     y: {
                         stacked: true,
-                        title: {
-                            display: true,
-                            text: 'Société',
-                            font: { weight: 'bold' }
-                        }
+                        title: { display: true, text: 'Société', font: { weight: 'bold' } }
                     }
                 },
                 plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: {
-                            boxWidth: 12,
-                            padding: 20
-                        }
+                    legend: { position: 'top', labels: { boxWidth: 12, padding: 20 } },
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'top',
+                        formatter: (value) => value ? value + '%' : '',
+                        color: '#000',
+                        font: { weight: 'bold' }
                     },
                     tooltip: {
                         callbacks: {
@@ -554,33 +538,22 @@ document.addEventListener('DOMContentLoaded', function() {
                     x: {
                         stacked: true,
                         max: 100,
-                        title: {
-                            display: true,
-                            text: 'Pourcentage (%)',
-                            font: { weight: 'bold' }
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                return value + '%';
-                            }
-                        }
+                        title: { display: true, text: 'Pourcentage (%)', font: { weight: 'bold' } },
+                        ticks: { callback: function(value) { return value + '%'; } }
                     },
                     y: {
                         stacked: true,
-                        title: {
-                            display: true,
-                            text: 'Société',
-                            font: { weight: 'bold' }
-                        }
+                        title: { display: true, text: 'Société', font: { weight: 'bold' } }
                     }
                 },
                 plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: {
-                            boxWidth: 12,
-                            padding: 20
-                        }
+                    legend: { position: 'top', labels: { boxWidth: 12, padding: 20 } },
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'top',
+                        formatter: (value) => value ? value + '%' : '',
+                        color: '#000',
+                        font: { weight: 'bold' }
                     },
                     tooltip: {
                         callbacks: {
@@ -594,6 +567,72 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     {% endif %}
+
+    // Nouveau Graphique : Répartition des Produits par Destination (Stacked Bar Chart)
+    {% if produit_destination_datasets and produit_destination_datasets|length > 0 %}
+    const produitDestinationCtx = document.getElementById('produitDestinationChart');
+    if (produitDestinationCtx) {
+        new Chart(produitDestinationCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ produits | tojson }},
+                datasets: {{ produit_destination_datasets | tojson }}
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        stacked: true,
+                        max: 100,
+                        title: { display: true, text: 'Pourcentage (%)', font: { weight: 'bold' } },
+                        ticks: { callback: function(value) { return value + '%'; } }
+                    },
+                    y: {
+                        stacked: true,
+                        title: { display: true, text: 'Produit', font: { weight: 'bold' } },
+                        ticks: { autoSkip: false, font: { size: 11 }, maxRotation: 45, minRotation: 45 }
+                    }
+                },
+                plugins: {
+                    legend: { position: 'top', labels: { boxWidth: 12, padding: 20 } },
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'top',
+                        formatter: (value) => value ? value + '%' : '',
+                        color: '#000',
+                        font: { weight: 'bold' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.x}%`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    {% endif %}
+
+    // AJAX for Table Navigation with Event Delegation
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('load-more') || e.target.classList.contains('load-previous')) {
+            e.preventDefault();
+            const offset = e.target.getAttribute('data-offset');
+            const q = e.target.getAttribute('data-q');
+            const month = e.target.getAttribute('data-month');
+
+            fetch(`/get_invoices_table?offset=${offset}&q=${encodeURIComponent(q)}&month=${encodeURIComponent(month)}`)
+                .then(response => response.text())
+                .then(html => {
+                    document.getElementById('invoices-table-container').innerHTML = html;
+                })
+                .catch(error => console.error('Error:', error));
+        }
+    });
 });
 </script>
 {% endblock %}

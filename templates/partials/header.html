@@ -1,5 +1,66 @@
+<!-- Topbar -->
 <nav class="navbar navbar-expand navbar-light bg-white topbar mb-4 static-top shadow">
-    <button id="sidebarToggleTop" class="btn btn-link d-md-none rounded-circle mr-3">
-        <i class="fa fa-bars"></i>
-    </button>
+    <!-- Topbar Navbar -->
+    <ul class="navbar-nav ml-auto">
+        <!-- Nav Item - User Information -->
+        <li class="nav-item dropdown no-arrow">
+            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
+               data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                <span class="mr-2 d-none d-lg-inline text-gray-600 small">
+                    {{ current_user.username if current_user and current_user.is_authenticated else 'Utilisateur' }}
+                </span>
+                <img class="img-profile rounded-circle"
+                     src="{{ url_for('static', filename=current_user.photo_profil) if current_user and current_user.is_authenticated and current_user.photo_profil else url_for('static', filename='img/undraw_profile.svg') }}"
+                     alt="Profile Image">
+            </a>
+
+            <!-- Dropdown - User Information -->
+            <div class="dropdown-menu dropdown-menu-right shadow animated--grow-in" aria-labelledby="userDropdown">
+                {% if current_user and current_user.is_authenticated %}
+                    <!-- Profile -->
+                    <a class="dropdown-item" href="{{ url_for('profile') }}">
+                        <i class="fas fa-user fa-sm fa-fw mr-2 text-gray-400"></i>
+                        Profil
+                    </a>
+
+                    <!-- Users (Admin Only) -->
+                    {% if current_user.id == 2 %}
+                    <a class="dropdown-item" href="{{ url_for('user_management') }}">
+                        <i class="fas fa-users fa-sm fa-fw mr-2 text-gray-400"></i>
+                        Gestion des Utilisateurs
+                    </a>
+                    {% endif %}
+
+                    <!-- Divider -->
+                    <div class="dropdown-divider"></div>
+
+                    <!-- Create Account (Admin Only) -->
+                    {% if current_user.id == 2 %}
+                    <div class="text-center px-4 py-2">
+                        <a class="btn btn-primary btn-sm btn-block" href="{{ url_for('register') }}">
+                            <i class="fas fa-user-plus fa-sm mr-1"></i>
+                            Create Account
+                        </a>
+                    </div>
+                    {% endif %}
+
+                    <!-- Logout -->
+                    <a class="dropdown-item" href="{{ url_for('logout') }}">
+                        <i class="fas fa-sign-out-alt fa-sm fa-fw mr-2 text-gray-400"></i>
+                        Déconnexion
+                    </a>
+
+                {% else %}
+                    <!-- Login (for non-authenticated users) -->
+                    <div class="text-center px-4 py-2">
+                        <a class="btn btn-primary btn-sm btn-block" href="{{ url_for('login') }}">
+                            <i class="fas fa-sign-in-alt fa-sm mr-1"></i>
+                            Connexion
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </li>
+    </ul>
 </nav>
+<!-- End of Topbar -->
