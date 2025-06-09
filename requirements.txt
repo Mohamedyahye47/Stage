@@ -2,11 +2,10 @@ Flask
 flask-bcrypt
 flask-login
 flask-wtf
-psycopg2-binary
+mysql-connector-python
 PyPDF2
 openpyxl
 pandas
 numpy
 scipy
 Werkzeug
-gunicorn

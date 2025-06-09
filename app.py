@@ -4,6 +4,7 @@ import os
 import PyPDF2
 import re
 from datetime import datetime
+import mysql.connector
 from flask_bcrypt import Bcrypt
 from werkzeug.utils import secure_filename
 import openpyxl
@@ -14,7 +15,6 @@ from scipy.stats import chi2_contingency
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_wtf import CSRFProtect
 import logging
-import psycopg2
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
+#csrf = CSRFProtect(app)  # Commented out to disable CSRF
 app.config['WTF_CSRF_ENABLED'] = False  # Disable CSRF protection for now
 
 # Security: Replace with a secure random key in production
@@ -53,21 +54,21 @@ class User(UserMixin):
 def load_user(user_id):
     try:
         conn = get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT id, username, photo_profil, is_admin 
+            SELECT id, username, photo_profil 
             FROM users WHERE id = %s
         """, (user_id,))
         user_data = cursor.fetchone()
 
         if user_data:
-            user = User(user_data[0], is_admin=user_data[3])
-            user.username = user_data[1]
-            user.photo_profil = user_data[2]
-            logger.info(f"Loaded user {user_id} with is_admin={user.is_admin}")
+            user = User(user_data['id'], is_admin=(user_data['id'] == 2))
+            user.username = user_data['username']
+            user.photo_profil = user_data['photo_profil']
+            logger.info(f"Loaded user {user_id} with is_admin={user.is_admin}")  # Debug log
             return user
         return None
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         logger.error(f"Database error in load_user: {err}")
         return None
     finally:
@@ -77,19 +78,19 @@ def load_user(user_id):
 @app.route('/users')
 @login_required
 def user_management():
-    if not current_user.is_admin:
+    if current_user.id != 2:  # Use ID check instead of is_admin
         logger.warning(f"Non-admin user ID {current_user.id} attempted to access user_management")
         flash('Accès refusé. Seule l\'admin peut gérer les utilisateurs.', 'danger')
         return redirect(url_for('dashboard'))
 
     try:
         conn = get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT id, username, email FROM users ORDER BY id")
         users = cursor.fetchall()
         logger.info(f"User ID {current_user.id} accessed user management")
         return render_template('users.html', users=users)
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         logger.error(f"Database error in user_management: {str(err)}")
         flash(f'Erreur de base de données : {str(err)}', 'danger')
         return redirect(url_for('dashboard'))
@@ -100,7 +101,7 @@ def user_management():
 @app.route('/delete_account/<int:user_id>', methods=['POST'])
 @login_required
 def delete_account(user_id):
-    if not current_user.is_admin:
+    if current_user.id != 2:  # Use ID check instead of is_admin
         logger.warning(f"Non-admin user ID {current_user.id} attempted to delete user ID {user_id}")
         flash('Accès refusé. Seule l\'admin peut supprimer des comptes.', 'danger')
         return redirect(url_for('dashboard'))
@@ -116,6 +117,14 @@ def delete_account(user_id):
         conn = get_connection()
         cursor = conn.cursor()
 
+        # Check if a transaction is already in progress and rollback if necessary
+        if conn.in_transaction:
+            conn.rollback()
+            logger.warning(f"Rolled back existing transaction before starting new one for user ID {user_id}")
+
+        # Start a new transaction
+        conn.start_transaction()
+
         # Verify user exists
         cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
         user = cursor.fetchone()
@@ -125,7 +134,7 @@ def delete_account(user_id):
             conn.rollback()
             return redirect(url_for('user_management'))
 
-        # Delete the user
+        # Delete the user (invoices remain unaffected)
         cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
         logger.info(f"Deleted user ID {user_id}")
 
@@ -133,8 +142,8 @@ def delete_account(user_id):
         flash('Compte supprimé avec succès.', 'success')
         return redirect(url_for('user_management'))
 
-    except psycopg2.Error as err:
-        if conn:
+    except mysql.connector.Error as err:
+        if conn and conn.in_transaction:
             conn.rollback()
         logger.error(f"Database error during deletion of user ID {user_id}: {str(err)}")
         flash(f'Erreur de suppression: {str(err)}', 'danger')
@@ -146,20 +155,13 @@ def delete_account(user_id):
             conn.close()
 
 # Database configuration
-def get_connection():
-    try:
-        conn = psycopg2.connect(
-            dbname="data_upload",
-            user="data_upload_tyxv_user",
-            password="jThqtSY0OYRMgQb2bxLjZONnzrXgN0K4",
-            host="dpg-d12sk1je5dus73cp28qg-a",
-            port="5432"
-        )
-        return conn
-    except psycopg2.Error as err:
-        logger.error(f"Database connection error: {str(err)}")
-        flash(f'Erreur de connexion à la base de données : {str(err)}', 'danger')
-        raise
+db_config = {
+    'host': os.environ.get('MYSQL_HOST', 'localhost'),
+    'user': os.environ.get('MYSQL_USER', 'root'),
+    'password': os.environ.get('MYSQL_PASSWORD', 'MedYahya47!!'),
+    'database': os.environ.get('MYSQL_DB', 'data_upload')
+}
+
 
 # Custom filter for number formatting (French format)
 def format_number(value):
@@ -176,6 +178,14 @@ def allowed_file(filename):
 def allowed_profile_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_PROFILE_EXTENSIONS']
 
+def get_connection():
+    try:
+        return mysql.connector.connect(**db_config)
+    except mysql.connector.Error as err:
+        logger.error(f"Database connection error: {str(err)}")
+        flash(f'Erreur de connexion à la base de données : {str(err)}', 'danger')
+        raise
+
 # Context processor to inject user data into all templates
 @app.context_processor
 def inject_user():
@@ -190,6 +200,7 @@ def inject_user():
         }
     return {'current_user': None}
 
+# Rest of the code (e.g., extract_invoice_data, get_dashboard_data, etc.) remains unchanged
 def extract_invoice_data(pdf_path):
     text = ""
     with open(pdf_path, 'rb') as file:
@@ -248,7 +259,6 @@ def extract_invoice_data(pdf_path):
         try:
             quantite_str = quantite_match.group(1)
             quantite = float(quantite_str.replace("'", "").replace(",", "").replace(" ", ""))
-            quantite = round(quantite, 3)  # Match DECIMAL(10,3)
         except (ValueError, AttributeError):
             quantite = None
 
@@ -283,11 +293,11 @@ def extract_invoice_data(pdf_path):
             r'Terminal:\s*([^\n]+)', text) else None,
         'societe': societe,
         'produit': produit,
-        'quantite': quantite,
-        'prix_unitaire': round(float(
+        'quantite': quantite or 0,
+        'prix_unitaire': float(
             re.search(r'Prix Unitaire\s+\$([\d\',]+\.\d{2})', text).group(1).replace("'", "").replace(",", "")
-        ), 2) if re.search(r'Prix Unitaire\s+\$([\d\',]+\.\d{2})', text) else None,
-        'total_usd': total_usd,
+        ) if re.search(r'Prix Unitaire\s+\$([\d\',]+\.\d{2})', text) else None,
+        'total_usd': total_usd or 0,
         'fret': fret,
         'total_sans_fret': total_sans_fret
     }
@@ -295,34 +305,34 @@ def extract_invoice_data(pdf_path):
 
 def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=None):
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     try:
         # Get available months for the dropdown
         cursor.execute("""
-            SELECT DISTINCT TO_CHAR(invoice_date, 'YYYY-MM') as month
+            SELECT DISTINCT DATE_FORMAT(invoice_date, '%Y-%m') as month
             FROM invoices
             WHERE invoice_date IS NOT NULL
             ORDER BY month DESC
         """)
-        available_months = [row[0] for row in cursor.fetchall()]
+        available_months = [row['month'] for row in cursor.fetchall()]
 
         # Base WHERE clause for all queries
         where_clause = " WHERE 1=1"
         params = []
         if selected_month:
-            where_clause += " AND TO_CHAR(invoice_date, 'YYYY-MM') = %s"
+            where_clause += " AND DATE_FORMAT(invoice_date, '%Y-%m') = %s"
             params.append(selected_month)
         if search_query and search_query.strip():
             search_query = f"%{search_query}%"
-            where_clause += " AND (ot_number ILIKE %s OR societe ILIKE %s OR produit ILIKE %s OR TO_CHAR(invoice_date, 'YYYY-MM-DD') ILIKE %s)"
+            where_clause += " AND (ot_number LIKE %s OR societe LIKE %s OR produit LIKE %s OR invoice_date LIKE %s)"
             params.extend([search_query, search_query, search_query, search_query])
 
         # Get invoices with pagination
         query = f"""
             SELECT 
                 ot_number,
-                TO_CHAR(invoice_date, 'YYYY-MM-DD') as invoice_date,
+                DATE_FORMAT(invoice_date, '%Y-%m-%d') as invoice_date,
                 societe,
                 produit,
                 COALESCE(quantite, 0) as quantite,
@@ -343,7 +353,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
             FROM invoices
             {where_clause}
         """, params[:-2])
-        total_count = cursor.fetchone()[0]
+        total_count = cursor.fetchone()['total_count']
 
         # Get summary statistics
         cursor.execute(f"""
@@ -369,18 +379,13 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
             LIMIT 1
         """, params[:-2] + params[:-2])
         top_societe = cursor.fetchone()
-        stats_dict = {
-            'total_invoices': stats[0],
-            'total_value': stats[1],
-            'avg_value': stats[2],
-            'top_societe_name': top_societe[0] if top_societe else 'N/A',
-            'top_societe_percent': round(top_societe[2], 1) if top_societe else 0
-        }
+        stats['top_societe_name'] = top_societe['societe'] if top_societe else 'N/A'
+        stats['top_societe_percent'] = round(top_societe['percentage'], 1) if top_societe else 0
 
         # Monthly totals for chart
         cursor.execute("""
             SELECT 
-                TO_CHAR(invoice_date, 'YYYY-MM') as month,
+                DATE_FORMAT(invoice_date, '%Y-%m') as month,
                 COALESCE(SUM(total_usd), 0) as total
             FROM invoices
             GROUP BY month
@@ -391,7 +396,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
         # Calculate Cramér's V for monthly data (month vs société)
         cursor.execute(f"""
             SELECT 
-                TO_CHAR(invoice_date, 'YYYY-MM') as month,
+                DATE_FORMAT(invoice_date, '%Y-%m') as month,
                 societe,
                 COALESCE(SUM(total_usd), 0) as total
             FROM invoices
@@ -402,7 +407,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
         cramers_v_monthly = None
         if monthly_societe_data and len(monthly_societe_data) > 1:
             try:
-                monthly_df = pd.DataFrame(monthly_societe_data, columns=['month', 'societe', 'total'])
+                monthly_df = pd.DataFrame(monthly_societe_data)
                 contingency_table = pd.crosstab(monthly_df['month'], monthly_df['societe'])
                 if contingency_table.shape[0] > 1 and contingency_table.shape[1] > 1:
                     chi2, _, _, _ = chi2_contingency(contingency_table)
@@ -424,12 +429,12 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
             GROUP BY produit
         """, params[:-2])
         product_data_raw = cursor.fetchall()
-        total_quantite = sum(row[1] for row in product_data_raw) or 1
+        total_quantite = sum(row['total_quantite'] for row in product_data_raw) or 1
         product_data = [{
-            'produit': row[0],
-            'total_quantite': row[1],
-            'total_usd': row[2],
-            'percentage': round((row[1] / total_quantite) * 100, 1)
+            'produit': row['produit'],
+            'total_quantite': row['total_quantite'],
+            'total_usd': row['total_usd'],
+            'percentage': round((row['total_quantite'] / total_quantite) * 100, 1)
         } for row in product_data_raw]
 
         # Company data (percentages by quantity)
@@ -443,10 +448,10 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
             GROUP BY societe
         """, params[:-2])
         societe_data_raw = cursor.fetchall()
-        total_quantite_all = sum(row[1] for row in societe_data_raw) or 1
-        societe_labels = [row[0] for row in societe_data_raw]
+        total_quantite_all = sum(row['total_quantite'] for row in societe_data_raw) or 1
+        societe_labels = [row['societe'] for row in societe_data_raw]
         societe_pourcentages = [
-            round((row[1] / total_quantite_all) * 100, 1) for row in societe_data_raw
+            round((row['total_quantite'] / total_quantite_all) * 100, 1) for row in societe_data_raw
         ]
 
         # Société/Destination data (percentages per société)
@@ -466,19 +471,19 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
         if destination_data:
             societe_totals = {}
             for row in destination_data:
-                societe = row[0]
-                societe_totals[societe] = societe_totals.get(societe, 0) + row[2]
+                societe = row['societe']
+                societe_totals[societe] = societe_totals.get(societe, 0) + row['total_usd']
 
-            destinations = sorted(set(row[1] for row in destination_data))
+            destinations = sorted(set(row['destination'] for row in destination_data))
             colors = ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b']
 
             for i, dest in enumerate(destinations):
-                dest_data = [row for row in destination_data if row[1] == dest]
+                dest_data = [row for row in destination_data if row['destination'] == dest]
                 percentages = []
                 for societe in societe_labels:
-                    matching = next((row for row in dest_data if row[0] == societe), None)
+                    matching = next((row for row in dest_data if row['societe'] == societe), None)
                     total = societe_totals.get(societe, 1)
-                    percentage = (matching[2] / total * 100) if matching else 0
+                    percentage = (matching['total_usd'] / total * 100) if matching else 0
                     percentages.append(round(percentage, 1))
 
                 societe_destination_datasets.append({
@@ -491,7 +496,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
 
             if len(destination_data) >= 2:
                 try:
-                    df = pd.DataFrame(destination_data, columns=['societe', 'destination', 'total_usd'])
+                    df = pd.DataFrame(destination_data)
                     contingency_table = pd.crosstab(df['societe'], df['destination'])
                     if contingency_table.shape[0] > 1 and contingency_table.shape[1] > 1:
                         chi2, _, _, _ = chi2_contingency(contingency_table)
@@ -516,24 +521,24 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
         produit_destination_data = cursor.fetchall()
         produit_destination_datasets = []
         cramers_v_produit_destination = None
-        produits = sorted(set(row[0] for row in produit_destination_data))
+        produits = sorted(set(row['produit'] for row in produit_destination_data))
 
         if produit_destination_data:
             produit_totals = {}
             for row in produit_destination_data:
-                produit = row[0]
-                produit_totals[produit] = produit_totals.get(produit, 0) + row[2]
+                produit = row['produit']
+                produit_totals[produit] = produit_totals.get(produit, 0) + row['total_usd']
 
-            destinations = sorted(set(row[1] for row in produit_destination_data))
+            destinations = sorted(set(row['destination'] for row in produit_destination_data))
             colors = ['#4C78A8', '#F58518', '#E45756', '#72B7B2', '#6B4E31']
 
             for i, dest in enumerate(destinations):
-                dest_data = [row for row in produit_destination_data if row[1] == dest]
+                dest_data = [row for row in produit_destination_data if row['destination'] == dest]
                 percentages = []
                 for produit in produits:
-                    matching = next((row for row in dest_data if row[0] == produit), None)
+                    matching = next((row for row in dest_data if row['produit'] == produit), None)
                     total = produit_totals.get(produit, 1)
-                    percentage = (matching[2] / total * 100) if matching else 0
+                    percentage = (matching['total_usd'] / total * 100) if matching else 0
                     percentages.append(round(percentage, 1))
 
                 produit_destination_datasets.append({
@@ -546,7 +551,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
 
             if len(produit_destination_data) >= 2:
                 try:
-                    df = pd.DataFrame(produit_destination_data, columns=['produit', 'destination', 'total_usd'])
+                    df = pd.DataFrame(produit_destination_data)
                     contingency_table = pd.crosstab(df['produit'], df['destination'])
                     if contingency_table.shape[0] > 1 and contingency_table.shape[1] > 1:
                         chi2, _, _, _ = chi2_contingency(contingency_table)
@@ -572,7 +577,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
         cramers_v = None
 
         if product_societe_data and len(product_societe_data) >= 2:
-            df_ps = pd.DataFrame(product_societe_data, columns=['societe', 'produit', 'total_usd'])
+            df_ps = pd.DataFrame(product_societe_data)
             produits = sorted(df_ps['produit'].unique())
             try:
                 if len(df_ps['societe'].unique()) > 1 and len(produits) > 1:
@@ -609,7 +614,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
 
     return {
         'invoices': invoices or [],
-        'stats': stats_dict or {
+        'stats': stats or {
             'total_invoices': 0,
             'total_value': 0,
             'avg_value': 0,
@@ -623,7 +628,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
         'societe_destination_datasets': societe_destination_datasets or [],
         'produit_societe_datasets': produit_societe_datasets or [],
         'produit_destination_datasets': produit_destination_datasets or [],
-        'produits': produits or [],
+        'produits': produits or [],  # Added for produit_destination_chart labels
         'cramers_v': cramers_v,
         'cramers_v_monthly': cramers_v_monthly,
         'cramers_v_societe_destination': cramers_v_societe_destination,
@@ -637,23 +642,23 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
 
 def get_invoices_table(offset=0, limit=10, search_query=None, selected_month=None):
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     try:
         where_clause = " WHERE 1=1"
         params = []
         if selected_month:
-            where_clause += " AND TO_CHAR(invoice_date, 'YYYY-MM') = %s"
+            where_clause += " AND DATE_FORMAT(invoice_date, '%Y-%m') = %s"
             params.append(selected_month)
         if search_query and search_query.strip():
             search_query = f"%{search_query}%"
-            where_clause += " AND (ot_number ILIKE %s OR societe ILIKE %s OR produit ILIKE %s OR TO_CHAR(invoice_date, 'YYYY-MM-DD') ILIKE %s)"
+            where_clause += " AND (ot_number LIKE %s OR societe LIKE %s OR produit LIKE %s OR invoice_date LIKE %s)"
             params.extend([search_query, search_query, search_query, search_query])
 
         query = f"""
             SELECT 
                 ot_number,
-                TO_CHAR(invoice_date, 'YYYY-MM-DD') as invoice_date,
+                DATE_FORMAT(invoice_date, '%Y-%m-%d') as invoice_date,
                 societe,
                 produit,
                 COALESCE(quantite, 0) as quantite,
@@ -673,7 +678,7 @@ def get_invoices_table(offset=0, limit=10, search_query=None, selected_month=Non
             FROM invoices
             {where_clause}
         """, params[:-2])
-        total_count = cursor.fetchone()[0]
+        total_count = cursor.fetchone()['total_count']
 
         return render_template('invoices_table.html', invoices=invoices, offset=offset, total_count=total_count, search_query=search_query, selected_month=selected_month)
     finally:
@@ -695,12 +700,13 @@ def admin_required(f):
         if not current_user.is_authenticated:
             flash('Veuillez vous connecter d\'abord.', 'danger')
             return redirect(url_for('login'))
-        if not current_user.is_admin:
+        if current_user.id != 2:  # Use ID check instead of is_admin
             flash('Accès refusé. Seule l\'admin est autorisé.', 'danger')
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
     return decorated_function
 
+# Routes
 @app.route('/')
 def home():
     return redirect(url_for('login'))
@@ -716,21 +722,21 @@ def login():
 
         try:
             conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, password, is_admin FROM users WHERE email = %s", (email,))
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT id, password FROM users WHERE email = %s", (email,))
             user = cursor.fetchone()
 
-            if user and bcrypt.check_password_hash(user[1], password):
-                session['user_id'] = user[0]
-                login_user(User(user[0], is_admin=user[2]))
-                logger.info(f"User ID {user[0]} logged in successfully")
+            if user and bcrypt.check_password_hash(user['password'], password):
+                session['user_id'] = user['id']
+                login_user(User(user['id'], is_admin=(user['id'] == 2)))  # Explicitly set is_admin
+                logger.info(f"User ID {user['id']} logged in successfully")
                 flash('Connexion réussie !', 'success')
                 next_page = request.args.get('next')
                 return redirect(next_page or url_for('dashboard'))
             else:
                 logger.warning(f"Failed login attempt for email {email}")
                 flash('Email ou mot de passe incorrect', 'danger')
-        except psycopg2.Error as err:
+        except mysql.connector.Error as err:
             logger.error(f"Database error in login: {str(err)}")
             flash(f'Erreur de base de données : {str(err)}', 'danger')
         finally:
@@ -749,7 +755,7 @@ def register():
 
         try:
             conn = get_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(dictionary=True)
 
             # Check if email exists
             cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
@@ -767,7 +773,7 @@ def register():
             logger.info(f"New user registered: {username} (email: {email})")
             flash('Compte créé avec succès !', 'success')
             return redirect(url_for('dashboard'))
-        except psycopg2.Error as err:
+        except mysql.connector.Error as err:
             logger.error(f"Database error in register: {str(err)}")
             flash(f'Erreur de base de données : {str(err)}', 'danger')
             return redirect(url_for('register'))
@@ -865,13 +871,6 @@ def upload():
                 invoice_data = extract_invoice_data(filepath)
                 invoice_data['societe'] = societe or invoice_data['societe']
                 invoice_date = invoice_data['invoice_date']
-                produit = invoice_data['produit']
-
-                # Validate required fields
-                if not invoice_data['ot_number'] or not invoice_date or not invoice_data['societe'] or not produit:
-                    logger.warning(f"User ID {current_user.id} uploaded invalid invoice data")
-                    flash('Données de facture invalides : OT, date, société et produit sont requis.', 'danger')
-                    return redirect(request.url)
 
                 conn = get_connection()
                 cursor = conn.cursor()
@@ -881,23 +880,17 @@ def upload():
                         quantite, prix_unitaire, total_usd, fret, total_sans_fret
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    invoice_data['ot_number'][:20],  # Truncate to match VARCHAR(20)
-                    invoice_date,
-                    invoice_data['destination'],
-                    invoice_data['societe'][:100],  # Truncate to match VARCHAR(100)
-                    produit[:100],  # Truncate to match VARCHAR(100)
-                    invoice_data['quantite'],
-                    invoice_data['prix_unitaire'],
-                    invoice_data['total_usd'],
-                    invoice_data['fret'],
+                    invoice_data['ot_number'], invoice_date, invoice_data['destination'],
+                    invoice_data['societe'], invoice_data['produit'], invoice_data['quantite'],
+                    invoice_data['prix_unitaire'], invoice_data['total_usd'], invoice_data['fret'],
                     invoice_data['total_sans_fret']
                 ))
                 conn.commit()
                 logger.info(f"User ID {current_user.id} uploaded invoice {invoice_data['ot_number']}")
                 flash('Facture traitée avec succès !', 'success')
                 return redirect(url_for('dashboard'))
-            except psycopg2.Error as err:
-                if err.pgcode == '23505':  # Unique violation in PostgreSQL
+            except mysql.connector.Error as err:
+                if err.errno == 1062:
                     logger.warning(f"Duplicate invoice OT number {invoice_data['ot_number']} by user ID {current_user.id}")
                     flash(f"Erreur : L'ordre de transfert n° {invoice_data['ot_number']} existe déjà", 'danger')
                 else:
@@ -918,7 +911,7 @@ def upload():
 def telecharger_excel():
     selected_month = request.args.get('month', '')
     conn = get_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     try:
         query = """
@@ -938,7 +931,7 @@ def telecharger_excel():
         """
         params = []
         if selected_month:
-            query += " AND TO_CHAR(invoice_date, 'YYYY-MM') = %s"
+            query += " AND DATE_FORMAT(invoice_date, '%Y-%m') = %s"
             params.append(selected_month)
 
         cursor.execute(query, params)
@@ -955,16 +948,16 @@ def telecharger_excel():
         ws.append(headers)
         for invoice in invoices:
             ws.append([
-                invoice[0],
-                invoice[1],
-                invoice[2],
-                invoice[3],
-                invoice[4],
-                invoice[5],
-                invoice[6],
-                invoice[7],
-                invoice[8],
-                invoice[9]
+                invoice['ot_number'],
+                invoice['invoice_date'],
+                invoice['destination'],
+                invoice['societe'],
+                invoice['produit'],
+                invoice['quantite'],
+                invoice['prix_unitaire'],
+                invoice['total_usd'],
+                invoice['fret'],
+                invoice['total_sans_fret']
             ])
 
         output = BytesIO()
@@ -997,7 +990,7 @@ def profile():
             return redirect(url_for('login'))
 
         conn = get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
 
         if request.method == 'POST':
             new_username = request.form.get('username')
@@ -1034,7 +1027,7 @@ def profile():
                 # Verify current password
                 cursor.execute("SELECT password FROM users WHERE id = %s", (user_id,))
                 user = cursor.fetchone()
-                if not user or not bcrypt.check_password_hash(user[0], current_password):
+                if not user or not bcrypt.check_password_hash(user['password'], current_password):
                     logger.warning(f"User ID {user_id} provided incorrect current password")
                     flash('Mot de passe actuel incorrect.', 'danger')
                     return redirect(url_for('profile'))
@@ -1085,8 +1078,8 @@ def profile():
             flash('Utilisateur non trouvé dans la base de données.', 'danger')
             return redirect(url_for('login'))
 
-        return render_template('profile.html', user={'username': user[0], 'email': user[1], 'photo_profil': user[2]})
-    except psycopg2.Error as err:
+        return render_template('profile.html', user=user)
+    except mysql.connector.Error as err:
         logger.error(f"Database error in profile: {str(err)}")
         flash(f'Erreur de base de données : {str(err)}', 'danger')
         return redirect(url_for('dashboard'))
