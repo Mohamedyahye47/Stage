@@ -13,7 +13,6 @@ import pandas as pd
 import numpy as np
 from scipy.stats import chi2_contingency
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from flask_wtf import CSRFProtect
 import logging
 
 # Configure logging
@@ -22,8 +21,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
-#csrf = CSRFProtect(app)  # Commented out to disable CSRF
-app.config['WTF_CSRF_ENABLED'] = False  # Disable CSRF protection for now
+app.config['WTF_CSRF_ENABLED'] = False  # Disable CSRF protection
 
 # Security: Replace with a secure random key in production
 app.secret_key = os.environ.get('FLASK_SECRET', os.urandom(24))
@@ -65,93 +63,16 @@ def load_user(user_id):
             user = User(user_data['id'], is_admin=(user_data['id'] == 2))
             user.username = user_data['username']
             user.photo_profil = user_data['photo_profil']
-            logger.info(f"Loaded user {user_id} with is_admin={user.is_admin}")  # Debug log
+            logger.info(f"Loaded user {user_id} with is_admin={user.is_admin}")
             return user
         return None
     except mysql.connector.Error as err:
         logger.error(f"Database error in load_user: {err}")
         return None
     finally:
-        cursor.close()
-        conn.close()
-
-@app.route('/users')
-@login_required
-def user_management():
-    if current_user.id != 2:  # Use ID check instead of is_admin
-        logger.warning(f"Non-admin user ID {current_user.id} attempted to access user_management")
-        flash('Accès refusé. Seule l\'admin peut gérer les utilisateurs.', 'danger')
-        return redirect(url_for('dashboard'))
-
-    try:
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, username, email FROM users ORDER BY id")
-        users = cursor.fetchall()
-        logger.info(f"User ID {current_user.id} accessed user management")
-        return render_template('users.html', users=users)
-    except mysql.connector.Error as err:
-        logger.error(f"Database error in user_management: {str(err)}")
-        flash(f'Erreur de base de données : {str(err)}', 'danger')
-        return redirect(url_for('dashboard'))
-    finally:
-        cursor.close()
-        conn.close()
-
-@app.route('/delete_account/<int:user_id>', methods=['POST'])
-@login_required
-def delete_account(user_id):
-    if current_user.id != 2:  # Use ID check instead of is_admin
-        logger.warning(f"Non-admin user ID {current_user.id} attempted to delete user ID {user_id}")
-        flash('Accès refusé. Seule l\'admin peut supprimer des comptes.', 'danger')
-        return redirect(url_for('dashboard'))
-
-    if user_id == current_user.id:
-        logger.warning(f"Admin user ID {user_id} attempted to delete their own account")
-        flash('Vous ne pouvez pas supprimer votre propre compte.', 'danger')
-        return redirect(url_for('user_management'))
-
-    conn = None
-    cursor = None
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        # Check if a transaction is already in progress and rollback if necessary
-        if conn.in_transaction:
-            conn.rollback()
-            logger.warning(f"Rolled back existing transaction before starting new one for user ID {user_id}")
-
-        # Start a new transaction
-        conn.start_transaction()
-
-        # Verify user exists
-        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
-        user = cursor.fetchone()
-        if not user:
-            logger.warning(f"User ID {user_id} not found")
-            flash('Utilisateur introuvable.', 'warning')
-            conn.rollback()
-            return redirect(url_for('user_management'))
-
-        # Delete the user (invoices remain unaffected)
-        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
-        logger.info(f"Deleted user ID {user_id}")
-
-        conn.commit()
-        flash('Compte supprimé avec succès.', 'success')
-        return redirect(url_for('user_management'))
-
-    except mysql.connector.Error as err:
-        if conn and conn.in_transaction:
-            conn.rollback()
-        logger.error(f"Database error during deletion of user ID {user_id}: {str(err)}")
-        flash(f'Erreur de suppression: {str(err)}', 'danger')
-        return redirect(url_for('user_management'))
-    finally:
-        if cursor:
+        if 'cursor' in locals():
             cursor.close()
-        if conn:
+        if 'conn' in locals():
             conn.close()
 
 # Database configuration
@@ -161,7 +82,6 @@ db_config = {
     'password': os.environ.get('MYSQL_PASSWORD', 'MedYahya47!!'),
     'database': os.environ.get('MYSQL_DB', 'data_upload')
 }
-
 
 # Custom filter for number formatting (French format)
 def format_number(value):
@@ -195,12 +115,12 @@ def inject_user():
                 'id': current_user.id,
                 'username': getattr(current_user, 'username', None),
                 'photo_profil': getattr(current_user, 'photo_profil', None),
-                'is_authenticated': True
+                'is_authenticated': True,
+                'is_admin': current_user.is_admin
             }
         }
     return {'current_user': None}
 
-# Rest of the code (e.g., extract_invoice_data, get_dashboard_data, etc.) remains unchanged
 def extract_invoice_data(pdf_path):
     text = ""
     with open(pdf_path, 'rb') as file:
@@ -414,7 +334,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                     n = contingency_table.sum().sum()
                     phi2 = chi2 / n
                     r, k = contingency_table.shape
-                    cramers_v_monthly = np.sqrt(phi2 / min((k-1), (r-1)))
+                    cramers_v_monthly = np.sqrt(phi2 / min((k - 1), (r - 1)))
             except ValueError:
                 cramers_v_monthly = None
 
@@ -503,7 +423,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                         n = contingency_table.sum().sum()
                         phi2 = chi2 / n
                         r, k = contingency_table.shape
-                        cramers_v_societe_destination = np.sqrt(phi2 / min((k-1), (r-1)))
+                        cramers_v_societe_destination = np.sqrt(phi2 / min((k - 1), (r - 1)))
                 except ValueError:
                     cramers_v_societe_destination = None
 
@@ -558,7 +478,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                         n = contingency_table.sum().sum()
                         phi2 = chi2 / n
                         r, k = contingency_table.shape
-                        cramers_v_produit_destination = np.sqrt(phi2 / min((k-1), (r-1)))
+                        cramers_v_produit_destination = np.sqrt(phi2 / min((k - 1), (r - 1)))
                 except ValueError:
                     cramers_v_produit_destination = None
 
@@ -578,21 +498,21 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
 
         if product_societe_data and len(product_societe_data) >= 2:
             df_ps = pd.DataFrame(product_societe_data)
-            produits = sorted(df_ps['produit'].unique())
+            produits_ps = sorted(df_ps['produit'].unique())
             try:
-                if len(df_ps['societe'].unique()) > 1 and len(produits) > 1:
+                if len(df_ps['societe'].unique()) > 1 and len(produits_ps) > 1:
                     contingency_table = pd.crosstab(df_ps['societe'], df_ps['produit'])
                     chi2, _, _, _ = chi2_contingency(contingency_table)
                     n = contingency_table.sum().sum()
                     phi2 = chi2 / n
                     r, k = contingency_table.shape
-                    cramers_v = np.sqrt(phi2 / min((k-1), (r-1)))
+                    cramers_v = np.sqrt(phi2 / min((k - 1), (r - 1)))
             except ValueError:
                 cramers_v = None
 
             colors = ['#4C78A8', '#F58518', '#E45756', '#72B7B2']
             societe_totals = df_ps.groupby('societe')['total_usd'].sum().to_dict()
-            for i, produit in enumerate(produits):
+            for i, produit in enumerate(produits_ps):
                 produit_data = df_ps[df_ps['produit'] == produit]
                 percentages = []
                 for societe in societe_labels:
@@ -609,8 +529,10 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                 })
 
     finally:
-        cursor.close()
-        conn.close()
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
     return {
         'invoices': invoices or [],
@@ -628,7 +550,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
         'societe_destination_datasets': societe_destination_datasets or [],
         'produit_societe_datasets': produit_societe_datasets or [],
         'produit_destination_datasets': produit_destination_datasets or [],
-        'produits': produits or [],  # Added for produit_destination_chart labels
+        'produits': produits or [],
         'cramers_v': cramers_v,
         'cramers_v_monthly': cramers_v_monthly,
         'cramers_v_societe_destination': cramers_v_societe_destination,
@@ -680,11 +602,15 @@ def get_invoices_table(offset=0, limit=10, search_query=None, selected_month=Non
         """, params[:-2])
         total_count = cursor.fetchone()['total_count']
 
-        return render_template('invoices_table.html', invoices=invoices, offset=offset, total_count=total_count, search_query=search_query, selected_month=selected_month)
+        return render_template('invoices_table.html', invoices=invoices, offset=offset, total_count=total_count,
+                               search_query=search_query, selected_month=selected_month)
     finally:
-        cursor.close()
-        conn.close()
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
+# Decorators
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -700,7 +626,7 @@ def admin_required(f):
         if not current_user.is_authenticated:
             flash('Veuillez vous connecter d\'abord.', 'danger')
             return redirect(url_for('login'))
-        if current_user.id != 2:  # Use ID check instead of is_admin
+        if not current_user.is_admin:
             flash('Accès refusé. Seule l\'admin est autorisé.', 'danger')
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
@@ -728,7 +654,7 @@ def login():
 
             if user and bcrypt.check_password_hash(user['password'], password):
                 session['user_id'] = user['id']
-                login_user(User(user['id'], is_admin=(user['id'] == 2)))  # Explicitly set is_admin
+                login_user(User(user['id'], is_admin=(user['id'] == 2)))
                 logger.info(f"User ID {user['id']} logged in successfully")
                 flash('Connexion réussie !', 'success')
                 next_page = request.args.get('next')
@@ -740,8 +666,10 @@ def login():
             logger.error(f"Database error in login: {str(err)}")
             flash(f'Erreur de base de données : {str(err)}', 'danger')
         finally:
-            cursor.close()
-            conn.close()
+            if 'cursor' in locals():
+                cursor.close()
+            if 'conn' in locals():
+                conn.close()
 
     return render_template('login.html')
 
@@ -778,8 +706,10 @@ def register():
             flash(f'Erreur de base de données : {str(err)}', 'danger')
             return redirect(url_for('register'))
         finally:
-            cursor.close()
-            conn.close()
+            if 'cursor' in locals():
+                cursor.close()
+            if 'conn' in locals():
+                conn.close()
 
     return render_template('register.html')
 
@@ -812,18 +742,18 @@ def dashboard():
                                societe_pourcentages=[],
                                societe_destination_datasets=[],
                                produit_societe_datasets=[],
+                               produit_destination_datasets=[],
+                               produits=[],
                                cramers_v=None,
                                cramers_v_monthly=None,
                                cramers_v_societe_destination=None,
+                               cramers_v_produit_destination=None,
                                available_months=[],
                                selected_month=None,
                                search_query='',
                                total_count=0,
                                offset=0,
                                table_html='')
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 @app.route('/search_invoices', methods=['GET'])
 @login_required
@@ -891,7 +821,8 @@ def upload():
                 return redirect(url_for('dashboard'))
             except mysql.connector.Error as err:
                 if err.errno == 1062:
-                    logger.warning(f"Duplicate invoice OT number {invoice_data['ot_number']} by user ID {current_user.id}")
+                    logger.warning(
+                        f"Duplicate invoice OT number {invoice_data['ot_number']} by user ID {current_user.id}")
                     flash(f"Erreur : L'ordre de transfert n° {invoice_data['ot_number']} existe déjà", 'danger')
                 else:
                     logger.error(f"Database error in upload: {str(err)}")
@@ -902,9 +833,102 @@ def upload():
                 flash(f'Erreur lors du traitement de la facture : {str(e)}', 'danger')
                 return redirect(request.url)
             finally:
-                cursor.close()
-                conn.close()
+                if 'cursor' in locals():
+                    cursor.close()
+                if 'conn' in locals():
+                    conn.close()
     return render_template('upload.html')
+
+@app.route('/manuel_insertion', methods=['GET', 'POST'])
+@login_required
+def manuel_insertion():
+    logger.info(f"User ID {current_user.id} accessed /manuel_insertion")
+
+    if request.method == 'POST':
+        try:
+            ot_number = request.form.get('nombre').strip()
+            invoice_date = request.form.get('date')
+            destination = request.form.get('destination').strip()
+            societe = request.form.get('societe').strip()
+            produit = request.form.get('produit').strip()
+            quantite = request.form.get('quantite')
+            prix_unitaire = request.form.get('prix_unitaire')
+            total_usd = request.form.get('total_usd')
+            fret = request.form.get('fret')
+
+            if not all([ot_number, invoice_date, destination, societe, produit, quantite, prix_unitaire, total_usd]):
+                flash('Tous les champs obligatoires doivent être remplis.', 'danger')
+                logger.warning(f"User ID {current_user.id} submitted incomplete form")
+                return render_template('manuel_insertion.html')
+
+            try:
+                quantite = float(quantite)
+                prix_unitaire = float(prix_unitaire)
+                total_usd = float(total_usd)
+                fret = float(fret) if fret else 0.0
+                if quantite <= 0 or prix_unitaire < 0 or total_usd < 0 or fret < 0:
+                    flash('Les valeurs numériques doivent être positives.', 'danger')
+                    logger.warning(f"User ID {current_user.id} submitted invalid numeric values")
+                    return render_template('manuel_insertion.html')
+            except ValueError:
+                flash('Les champs quantité, prix unitaire, total USD et fret doivent être des nombres.', 'danger')
+                logger.warning(f"User ID {current_user.id} submitted non-numeric values")
+                return render_template('manuel_insertion.html')
+
+            try:
+                invoice_date = datetime.strptime(invoice_date, '%Y-%m-%d').date()
+            except ValueError:
+                flash('La date doit être au format AAAA-MM-JJ.', 'danger')
+                logger.warning(f"User ID {current_user.id} submitted invalid date format")
+                return render_template('manuel_insertion.html')
+
+            total_sans_fret = round(total_usd - (fret * quantite), 2) if fret else total_usd
+
+            conn = get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute('SELECT ot_number FROM invoices WHERE ot_number = %s', (ot_number,))
+            if cursor.fetchone():
+                flash(f"L'ordre de transfert n° {ot_number} existe déjà.", 'danger')
+                logger.warning(f"User ID {current_user.id} attempted to insert duplicate OT {ot_number}")
+                return render_template('manuel_insertion.html')
+
+            query = """
+                INSERT INTO invoices (
+                    ot_number, invoice_date, destination, societe, produit, quantite,
+                    prix_unitaire, total_usd, fret, total_sans_fret
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            values = (
+                ot_number, invoice_date, destination, societe, produit, quantite,
+                prix_unitaire, total_usd, fret, total_sans_fret
+            )
+
+            cursor.execute(query, values)
+            conn.commit()
+            flash('Facture insérée avec succès !', 'success')
+            logger.info(f"User ID {current_user.id} manually inserted invoice {ot_number}")
+            return redirect(url_for('dashboard'))
+
+        except mysql.connector.Error as err:
+            if err.errno == 1062:
+                flash(f"L'ordre de transfert n° {ot_number} existe déjà.", 'danger')
+                logger.warning(f"Duplicate invoice OT number {ot_number} by user ID {current_user.id}")
+            else:
+                flash(f'Erreur de base de données : {str(err)}', 'danger')
+                logger.error(f"Database error in manuel_insertion: {str(err)}")
+            return render_template('manuel_insertion.html')
+        except Exception as e:
+            flash(f'Erreur inattendue : {str(e)}', 'danger')
+            logger.error(f"Error in manuel_insertion: {str(e)}")
+            return render_template('manuel_insertion.html')
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+            if 'conn' in locals():
+                conn.close()
+
+    return render_template('manuel_insertion.html')
 
 @app.route('/telecharger_excel')
 @login_required
@@ -976,8 +1000,10 @@ def telecharger_excel():
         flash(f'Erreur lors du téléchargement : {str(e)}', 'danger')
         return redirect(url_for('dashboard'))
     finally:
-        cursor.close()
-        conn.close()
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
@@ -1005,14 +1031,12 @@ def profile():
                 flash('Le nom d\'utilisateur et l\'email sont requis.', 'danger')
                 return redirect(url_for('profile'))
 
-            # Check if email is already used by another user
             cursor.execute("SELECT id FROM users WHERE email = %s AND id != %s", (new_email, user_id))
             if cursor.fetchone():
                 logger.warning(f"User ID {user_id} attempted to use existing email {new_email}")
                 flash('Cet email est déjà utilisé par un autre utilisateur.', 'danger')
                 return redirect(url_for('profile'))
 
-            # Handle password change if fields are filled
             if current_password or new_password or confirm_password:
                 if not (current_password and new_password and confirm_password):
                     logger.warning(f"User ID {user_id} provided incomplete password fields")
@@ -1024,7 +1048,6 @@ def profile():
                     flash('Les nouveaux mots de passe ne correspondent pas.', 'danger')
                     return redirect(url_for('profile'))
 
-                # Verify current password
                 cursor.execute("SELECT password FROM users WHERE id = %s", (user_id,))
                 user = cursor.fetchone()
                 if not user or not bcrypt.check_password_hash(user['password'], current_password):
@@ -1032,13 +1055,11 @@ def profile():
                     flash('Mot de passe actuel incorrect.', 'danger')
                     return redirect(url_for('profile'))
 
-                # Update password
                 hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
                 cursor.execute("UPDATE users SET password = %s WHERE id = %s", (hashed_password, user_id))
                 logger.info(f"User ID {user_id} updated password")
                 flash('Mot de passe mis à jour avec succès!', 'success')
 
-            # Handle profile photo upload
             photo_path = None
             if profile_photo and allowed_profile_file(profile_photo.filename):
                 if not os.path.exists(app.config['PROFILE_UPLOAD_FOLDER']):
@@ -1048,7 +1069,6 @@ def profile():
                 profile_photo.save(photo_path)
                 photo_path = f"uploads/profiles/{user_id}_{filename}"
 
-            # Update user info
             update_query = """
                 UPDATE users
                 SET username = %s, email = %s
@@ -1070,7 +1090,6 @@ def profile():
             flash('Profil mis à jour avec succès !', 'success')
             return redirect(url_for('profile'))
 
-        # GET request - show profile
         cursor.execute("SELECT username, email, photo_profil FROM users WHERE id = %s", (user_id,))
         user = cursor.fetchone()
         if not user:
@@ -1090,6 +1109,110 @@ def profile():
     finally:
         if 'conn' in locals():
             cursor.close()
+            conn.close()
+
+@app.route('/users')
+@admin_required
+def user_management():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, username, email FROM users ORDER BY id")
+        users = cursor.fetchall()
+        logger.info(f"User ID {current_user.id} accessed user management")
+        return render_template('users.html', users=users)
+    except mysql.connector.Error as err:
+        logger.error(f"Database error in user_management: {str(err)}")
+        flash(f'Erreur de base de données : {str(err)}', 'danger')
+        return redirect(url_for('dashboard'))
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+@app.route('/delete_account/<int:user_id>', methods=['POST'])
+@admin_required
+def delete_account(user_id):
+    if user_id == current_user.id:
+        logger.warning(f"Admin user ID {user_id} attempted to delete their own account")
+        flash('Vous ne pouvez pas supprimer votre propre compte.', 'danger')
+        return redirect(url_for('user_management'))
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        if conn.in_transaction:
+            conn.rollback()
+            logger.warning(f"Rolled back existing transaction before starting new one for user ID {user_id}")
+
+        conn.start_transaction()
+
+        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+        if not user:
+            logger.warning(f"User ID {user_id} not found")
+            flash('Utilisateur introuvable.', 'warning')
+            conn.rollback()
+            return redirect(url_for('user_management'))
+
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        logger.info(f"Deleted user ID {user_id}")
+
+        conn.commit()
+        flash('Compte supprimé avec succès.', 'success')
+        return redirect(url_for('user_management'))
+
+    except mysql.connector.Error as err:
+        if conn and conn.in_transaction:
+            conn.rollback()
+        logger.error(f"Database error during deletion of user ID {user_id}: {str(err)}")
+        flash(f'Erreur de suppression: {str(err)}', 'danger')
+        return redirect(url_for('user_management'))
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@app.route('/delete_invoice/<string:ot_number>', methods=['POST'])
+@admin_required
+def delete_invoice(ot_number):
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        if conn.in_transaction:
+            conn.rollback()
+            logger.warning(f"Rolled back existing transaction before deleting invoice {ot_number}")
+
+        conn.start_transaction()
+
+        cursor.execute("SELECT ot_number FROM invoices WHERE ot_number = %s", (ot_number,))
+        if not cursor.fetchone():
+            logger.warning(f"User ID {current_user.id} attempted to delete non-existent invoice {ot_number}")
+            return jsonify({"success": False, "message": f"L'ordre de transfert n° {ot_number} n'existe pas."}), 404
+
+        cursor.execute("DELETE FROM invoices WHERE ot_number = %s", (ot_number,))
+        conn.commit()
+
+        logger.info(f"User ID {current_user.id} deleted invoice {ot_number}")
+        return jsonify({"success": True, "message": f"Facture n° {ot_number} supprimée avec succès."})
+
+    except mysql.connector.Error as err:
+        if conn and conn.in_transaction:
+            conn.rollback()
+        logger.error(f"Database error during deletion of invoice {ot_number} by User ID {current_user.id}: {str(err)}")
+        return jsonify({"success": False, "message": f"Erreur de suppression: {str(err)}"}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
             conn.close()
 
 @app.route('/logout')

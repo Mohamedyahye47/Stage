@@ -1,41 +1,85 @@
-<table class="table table-bordered table-hover">
-    <thead class="thead-light">
+<table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+    <thead>
         <tr>
             <th>N° OT</th>
             <th>Date</th>
             <th>Société</th>
             <th>Produit</th>
-            <th>Quantité (TM)</th>
-            <th>Total (USD)</th>
-            <th>Sans Fret (USD)</th>
+            <th>Quantité (MT)</th>
+            <th>Total USD</th>
+            <th>Total sans Fret</th>
+            {% if current_user.is_admin %}
+            <th>Actions</th>
+            {% endif %}
         </tr>
     </thead>
     <tbody>
         {% for invoice in invoices %}
         <tr>
-            <td>{{ invoice.ot_number | default('N/A') }}</td>
-            <td>{{ invoice.invoice_date | default('N/A') }}</td>
-            <td>{{ invoice.societe | default('N/A') }}</td>
-            <td>{{ invoice.produit | default('N/A') }}</td>
-            <td class="text-right">{{ invoice.quantite | default(0) | format_number }}</td>
-            <td class="text-right">${{ invoice.total_usd | default(0) | format_number }}</td>
-            <td class="text-right">
-                {% if invoice.total_sans_fret %}
-                    ${{ invoice.total_sans_fret | format_number }}
-                {% else %}
-                    N/A
-                {% endif %}
+            <td>{{ invoice.ot_number }}</td>
+            <td>{{ invoice.invoice_date }}</td>
+            <td>{{ invoice.societe }}</td>
+            <td>{{ invoice.produit }}</td>
+            <td>{{ invoice.quantite | format_number }}</td>
+            <td>${{ invoice.total_usd | format_number }}</td>
+            <td>${{ invoice.total_sans_fret | format_number }}</td>
+            {% if current_user.is_admin %}
+            <td>
+                <button class="btn btn-danger btn-sm delete-invoice-btn"
+                        data-ot-number="{{ invoice.ot_number }}"
+                        data-toggle="modal"
+                        data-target="#deleteInvoiceModal">
+                    <i class="fas fa-trash"></i>
+                </button>
             </td>
+            {% endif %}
         </tr>
         {% endfor %}
     </tbody>
 </table>
 
-<div class="d-flex justify-content-between mt-3">
-    {% if offset > 0 %}
-        <a href="#" class="btn btn-secondary load-previous" data-offset="{{ offset - 10 }}" data-q="{{ search_query }}" data-month="{{ selected_month }}">Précédent</a>
-    {% endif %}
-    {% if offset + 10 < total_count %}
-        <a href="#" class="btn btn-primary load-more" data-offset="{{ offset + 10 }}" data-q="{{ search_query }}" data-month="{{ selected_month }}">Suivant</a>
-    {% endif %}
+<!-- Pagination -->
+<div class="d-flex justify-content-between align-items-center mt-3">
+    <div>
+        Affichage de {{ offset + 1 }} à {{ offset + invoices|length }} sur {{ total_count }} factures
+    </div>
+    <nav>
+        <ul class="pagination mb-0">
+            {% if offset > 0 %}
+            <li class="page-item">
+                <a class="page-link load-previous" href="#"
+                   data-offset="{{ offset - 10 }}"
+                   data-q="{{ search_query | default('') }}"
+                   data-month="{{ selected_month | default('') }}">Précédent</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link">Précédent</span>
+            </li>
+            {% endif %}
+
+            {% set total_pages = (total_count / 10)|round(0, 'ceil')|int %}
+            {% for page in range(1, total_pages + 1) %}
+            <li class="page-item {% if offset // 10 + 1 == page %}active{% endif %}">
+                <p class="page-link load-page"
+                   data-offset="{{ (page - 1) * 10 }}"
+                   data-q="{{ search_query | default('') }}"
+                   data-month="{{ selected_month | default('') }}">{{ page }}</p>
+            </li>
+            {% endfor %}
+
+            {% if offset + 10 < total_count %}
+            <li class="page-item">
+                <a class="page-link load-more" href="#"
+                   data-offset="{{ offset + 10 }}"
+                   data-q="{{ search_query | default('') }}"
+                   data-month="{{ selected_month | default('') }}">Suivant</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link">Suivant</span>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
 </div>

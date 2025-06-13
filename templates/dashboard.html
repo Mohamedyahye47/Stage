@@ -334,10 +334,11 @@
     </div>
 </div>
 
+{% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+$(document).ready(function() {
     // Graphique Mensuel
     {% if monthly_data and monthly_data|length > 0 %}
     const monthlyCtx = document.getElementById('monthlyChart');
@@ -619,7 +620,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // AJAX for Table Navigation with Event Delegation
     document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('load-more') || e.target.classList.contains('load-previous')) {
+        if (e.target.classList.contains('load-more') || e.target.classList.contains('load-previous') || e.target.classList.contains('load-page')) {
             e.preventDefault();
             const offset = e.target.getAttribute('data-offset');
             const q = e.target.getAttribute('data-q');
@@ -633,6 +634,57 @@ document.addEventListener('DOMContentLoaded', function() {
                 .catch(error => console.error('Error:', error));
         }
     });
+
+    // Handle Delete Invoice Button Clicks
+    $(document).on('click', '.delete-invoice-btn', function() {
+        var otNumber = $(this).data('ot-number');
+        $('#otNumberDisplay').text(otNumber);
+        $('#confirmDeleteButton').data('ot-number', otNumber);
+        $('#deleteInvoiceModal').modal('show');
+    });
+
+    // Handle Confirm Delete Button in Modal
+    $('#confirmDeleteButton').on('click', function() {
+        var otNumber = $(this).data('ot-number');
+        $.ajax({
+            url: '/delete_invoice/' + otNumber,
+            type: 'POST',
+            contentType: 'application/json',
+            success: function(data) {
+                $('#deleteInvoiceModal').modal('hide');
+                if (data.success) {
+                    // Show success message and reload the page
+                    $('<div>', {
+                        class: 'alert alert-success alert-dismissible fade show',
+                        html: data.message +
+                              '<button type="button" class="close" data-dismiss="alert" aria-label="Close">' +
+                              '<span aria-hidden="true">×</span></button>'
+                    }).prependTo('.container-fluid').delay(2000).fadeOut('slow', function() {
+                        window.location.reload();
+                    });
+                } else {
+                    // Show error message
+                    $('<div>', {
+                        class: 'alert alert-danger alert-dismissible fade show',
+                        html: data.message +
+                              '<button type="button" class="close" data-dismiss="alert" aria-label="Close">' +
+                              '<span aria-hidden="true">×</span></button>'
+                    }).prependTo('.container-fluid').delay(5000).fadeOut('slow', function() { $(this).remove(); });
+                }
+            },
+            error: function(error) {
+                $('#deleteInvoiceModal').modal('hide');
+                console.error('Error deleting invoice:', error);
+                $('<div>', {
+                    class: 'alert alert-danger alert-dismissible fade show',
+                    html: 'Erreur lors de la suppression de la facture.' +
+                          '<button type="button" class="close" data-dismiss="alert" aria-label="Close">' +
+                          '<span aria-hidden="true">×</span></button>'
+                }).prependTo('.container-fluid').delay(5000).fadeOut('slow', function() { $(this).remove(); });
+            }
+        });
+    });
 });
 </script>
+{% endblock %}
 {% endblock %}

@@ -19,8 +19,12 @@
     <!-- Divider -->
     <hr class="sidebar-divider">
 
-    <!-- Heading -->
-    <div class="sidebar-heading">Interface</div>
+    <li class="nav-item {{ 'active' if request.endpoint == 'manuel_insertion' }}">
+    <a class="nav-link" href="{{ url_for('manuel_insertion') }}">
+        <i class="fas fa-fw fa-pencil-alt"></i>
+        <span>Insertion Manuelle</span>
+    </a>
+    </li>
 
     <!-- Nav Item - Upload -->
     <li class="nav-item">

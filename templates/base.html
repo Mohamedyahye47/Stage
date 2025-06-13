@@ -5,19 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Factures Pétrolières{% endblock %}</title>
 
+    <!-- Font Awesome (single import) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- SB Admin 2 CSS -->
     <link href="{{ url_for('static', filename='sb-admin-2.min.css') }}" rel="stylesheet">
 
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-
-    <!-- Custom styles (optional) -->
+    <!-- Custom styles -->
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
-
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     {% block head_extra %}{% endblock %}
 </head>
@@ -68,19 +63,19 @@
 
     </div>
 
-    <!-- Scroll to Top Button-->
+    <!-- Scroll to Top Button -->
     <a class="scroll-to-top rounded" href="#page-top">
         <i class="fas fa-angle-up"></i>
     </a>
 
-    <!-- Delete Confirmation Modal -->
+    <!-- Delete Confirmation Modal (for user account deletion) -->
     <div class="modal fade" id="deleteConfirmModal" tabindex="-1" role="dialog" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
                 <div class="modal-header bg-danger text-white">
                     <h5 class="modal-title" id="deleteConfirmModalLabel">Confirmation de suppression</h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Fermer">
-                        <span aria-hidden="true">&times;</span>
+                        <span aria-hidden="true">×</span>
                     </button>
                 </div>
                 <div class="modal-body">
@@ -92,6 +87,28 @@
                     <form id="deleteForm" method="POST" action="" style="display:inline;">
                         <button type="submit" class="btn btn-danger" id="confirmDeleteBtn">Confirmer la suppression</button>
                     </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Invoice Modal (for invoice deletion) -->
+    <div class="modal fade" id="deleteInvoiceModal" tabindex="-1" role="dialog" aria-labelledby="deleteInvoiceModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="deleteInvoiceModalLabel">Confirmer la suppression</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Fermer">
+                        <span aria-hidden="true">×</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <p>Êtes-vous sûr de vouloir supprimer la facture n° <span id="otNumberDisplay"></span> ?</p>
+                    <p class="text-danger"><strong>Cette action est irréversible !</strong></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Annuler</button>
+                    <button type="button" class="btn btn-danger" id="confirmDeleteButton">Supprimer</button>
                 </div>
             </div>
         </div>
@@ -111,17 +128,12 @@
 
     <script>
     $(document).ready(function() {
-        // Enhanced delete confirmation using modal
+        // Handle user account deletion confirmation
         $('form[data-confirm-delete]').on('submit', function(e) {
             e.preventDefault();
             var formAction = $(this).attr('action');
             $('#deleteForm').attr('action', formAction);
             $('#deleteConfirmModal').modal('show');
-        });
-
-        // Handle modal submission
-        $('#confirmDeleteBtn').on('click', function() {
-            $('#deleteForm').submit();
         });
     });
     </script>
