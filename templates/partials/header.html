@@ -1,9 +1,21 @@
 <!-- Topbar -->
 <nav class="navbar navbar-expand navbar-light bg-white topbar mb-4 static-top shadow">
     <!-- Topbar Navbar -->
-    <ul class="navbar-nav ml-auto">
-        <!-- Nav Item - User Information -->
-        <li class="nav-item dropdown no-arrow">
+    <ul class="navbar-nav w-100">
+        <!-- Left side: Menu Toggle + Logo -->
+        <li class="nav-item">
+            <div class="topbar-menu-container">
+                <button id="sidebarToggleTop" class="btn btn-link d-block rounded-scare mr-3">
+                    <i class="fa fa-bars"></i>
+                </button>
+                <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                    <img src="{{ url_for('static', filename='img/Pasted image.png') }}" alt="Logo" style="height: 39px; margin-top: 5px;">
+                </a>
+            </div>
+        </li>
+
+        <!-- Right side: User Information -->
+        <li class="nav-item dropdown no-arrow ml-auto">
             <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
                data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                 <span class="mr-2 d-none d-lg-inline text-gray-600 small">

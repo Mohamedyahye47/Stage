@@ -1,15 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta name="description" content="">
+    <meta name="description" content="Créer un compte">
     <meta name="author" content="">
-    <title>SB Admin 2 - Register</title>
+
+    <title>Créer un Compte - Factures Pétrolières</title>
+
+    <!-- CSS principal -->
     <link href="{{ url_for('static', filename='sb-admin-2.min.css') }}" rel="stylesheet">
 </head>
 <body class="bg-gradient-primary">
+
     <div class="container">
         <div class="card o-hidden border-0 shadow-lg my-5">
             <div class="card-body p-0">
@@ -18,8 +22,10 @@
                     <div class="col-lg-7">
                         <div class="p-5">
                             <div class="text-center">
-                                <h1 class="h4 text-gray-900 mb-4">Create an Account!</h1>
+                                <h1 class="h4 text-gray-900 mb-4">Créer un compte !</h1>
                             </div>
+
+                            <!-- Affichage des messages flash -->
                             {% with messages = get_flashed_messages(with_categories=true) %}
                                 {% if messages %}
                                     {% for category, message in messages %}
@@ -29,25 +35,34 @@
                                     {% endfor %}
                                 {% endif %}
                             {% endwith %}
+
+                            <!-- Formulaire -->
                             <form class="user" method="POST" action="{{ url_for('register') }}">
                                 <div class="form-group">
-                                    <input type="text" class="form-control form-control-user" name="username" placeholder="Username" required>
+                                    <input type="text" class="form-control form-control-user" name="username" placeholder="Nom d'utilisateur" required>
                                 </div>
                                 <div class="form-group">
-                                    <input type="email" class="form-control form-control-user" name="email" placeholder="Email Address" required>
+                                    <input type="email" class="form-control form-control-user" name="email" placeholder="Adresse e-mail" required>
                                 </div>
                                 <div class="form-group row">
                                     <div class="col-sm-6 mb-3 mb-sm-0">
-                                        <input type="password" class="form-control form-control-user" name="password" placeholder="Password" required>
+                                        <input type="password" class="form-control form-control-user" name="password" placeholder="Mot de passe" required>
                                     </div>
                                     <div class="col-sm-6">
-                                        <input type="password" class="form-control form-control-user" name="confirm_password" placeholder="Repeat Password" required>
+                                        <input type="password" class="form-control form-control-user" name="confirm_password" placeholder="Confirmer le mot de passe" required>
                                     </div>
                                 </div>
-                                <button type="submit" class="btn btn-primary btn-user btn-block">Register</button>
-                            </form>
-                            <hr>
 
+                                <button type="submit" class="btn btn-primary btn-user btn-block">
+                                    S'inscrire
+                                </button>
+
+                                <a href="{{ url_for('profile') }}" class="btn btn-danger btn-user btn-block">
+                                    <i class="fas fa-arrow-left fa-sm"></i> Annuler l'inscription
+                                </a>
+                            </form>
+
+                            <hr>
 
                         </div>
                     </div>
@@ -55,5 +70,9 @@
             </div>
         </div>
     </div>
+
+    <!-- JS requis -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -14,10 +14,228 @@
     <!-- Custom styles -->
     <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 
+    <style>
+        /* Reset and base styles */
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fc;
+        }
+
+        /* Sidebar Styles - Always visible on desktop */
+        .sidebar {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            width: 14rem;
+            height: 100vh;
+            z-index: 1030;
+            background: linear-gradient(180deg, #4e73df 10%, #224abe 100%);
+            overflow-y: auto;
+            transition: all 0.3s ease;
+            transform: translateX(0);
+        }
+
+        /* Topbar - Fixed positioning */
+        .topbar {
+            position: fixed !important;
+            top: 0;
+            left: 14rem;
+            right: 0;
+            height: 4.375rem;
+            z-index: 1020;
+            background-color: white;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+            display: flex;
+            align-items: center;
+            padding: 0 1.5rem;
+        }
+
+        /* Content wrapper positioning */
+        #content-wrapper {
+            margin-left: 14rem;
+            margin-top: 4.375rem;
+            min-height: calc(100vh - 4.375rem);
+        }
+
+        #content {
+            padding-top: 1rem;
+        }
+
+        /* Container spacing */
+        .container-fluid {
+            padding-bottom: 2rem;
+        }
+
+        /* Sidebar toggle buttons - Hidden on desktop */
+        #sidebarToggle,
+        #sidebarToggleTop {
+            display: none !important;
+        }
+
+        /* Footer positioning */
+        .sticky-footer {
+            margin-left: 14rem;
+            background-color: white;
+            border-top: 1px solid #e3e6f0;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            /* Hide sidebar by default on mobile */
+            .sidebar {
+                transform: translateX(-14rem);
+            }
+
+            /* Show sidebar when active */
+            .sidebar.show {
+                transform: translateX(0);
+            }
+
+            /* Topbar takes full width on mobile */
+            .topbar {
+                left: 0;
+            }
+
+            /* Content takes full width on mobile */
+            #content-wrapper {
+                margin-left: 0;
+            }
+
+            /* Footer takes full width on mobile */
+            .sticky-footer {
+                margin-left: 0;
+            }
+
+            /* Show mobile toggle button */
+            #sidebarToggleTop {
+                display: inline-block !important;
+            }
+
+            /* Sidebar overlay on mobile */
+            .sidebar.show {
+                box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            }
+        }
+
+        @media (min-width: 769px) {
+            /* Ensure sidebar is always visible on desktop */
+            .sidebar {
+                transform: translateX(0) !important;
+            }
+
+            /* Hide mobile toggle completely on desktop */
+            #sidebarToggleTop {
+                display: none !important;
+            }
+        }
+
+        /* Sidebar scrollbar styling */
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Enhanced sidebar styles */
+        .sidebar .sidebar-brand {
+            height: 4.375rem;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(0, 0, 0, 0.1);
+            color: white;
+        }
+
+        .sidebar .sidebar-brand:hover {
+            color: white;
+            text-decoration: none;
+        }
+
+        .sidebar .sidebar-brand-text {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .sidebar .nav-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 1rem;
+            border-radius: 0.35rem;
+            margin: 0 0.5rem;
+            transition: all 0.3s;
+        }
+
+        .sidebar .nav-link:hover {
+            color: white;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar .nav-item.active .nav-link {
+            color: white;
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .sidebar .nav-link i {
+            font-size: 0.85rem;
+            margin-right: 0.25rem;
+            width: 1rem;
+        }
+
+        .sidebar .sidebar-divider {
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            margin: 1rem 0;
+        }
+
+        /* Mobile backdrop */
+        .mobile-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1025;
+            display: none;
+        }
+
+        .mobile-backdrop.show {
+            display: block;
+        }
+
+        /* Alert positioning fix */
+        .alert {
+            margin-bottom: 1rem;
+        }
+    </style>
+
     {% block head_extra %}{% endblock %}
 </head>
 
 <body id="page-top">
+
+    <!-- Mobile backdrop -->
+    <div class="mobile-backdrop" id="mobileBackdrop"></div>
 
     <!-- Wrapper -->
     <div id="wrapper">
@@ -104,7 +322,7 @@
                 </div>
                 <div class="modal-body">
                     <p>Êtes-vous sûr de vouloir supprimer la facture n° <span id="otNumberDisplay"></span> ?</p>
-                    <p class="text-danger"><strong>Cette action est irréversible !</strong></p>
+                    <p class="text-danger"><strong>Cette action is irréversible !</strong></p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Annuler</button>
@@ -135,6 +353,57 @@
             $('#deleteForm').attr('action', formAction);
             $('#deleteConfirmModal').modal('show');
         });
+
+        // Mobile sidebar toggle only
+        $('#sidebarToggleTop').on('click', function(e) {
+            e.preventDefault();
+            $('.sidebar').toggleClass('show');
+            $('#mobileBackdrop').toggleClass('show');
+        });
+
+        // Close mobile sidebar when clicking backdrop
+        $('#mobileBackdrop').on('click', function() {
+            $('.sidebar').removeClass('show');
+            $('#mobileBackdrop').removeClass('show');
+        });
+
+        // Close mobile sidebar when clicking outside
+        $(document).on('click', function(event) {
+            if ($(window).width() <= 768) {
+                if (!$(event.target).closest('.sidebar, #sidebarToggleTop').length) {
+                    $('.sidebar').removeClass('show');
+                    $('#mobileBackdrop').removeClass('show');
+                }
+            }
+        });
+
+        // Handle window resize
+        $(window).on('resize', function() {
+            if ($(window).width() > 768) {
+                // Ensure sidebar is always visible on desktop and remove mobile classes
+                $('.sidebar').removeClass('show');
+                $('#mobileBackdrop').removeClass('show');
+            }
+        });
+
+        // Close mobile sidebar after clicking navigation link
+        $('.sidebar .nav-link').on('click', function() {
+            if ($(window).width() <= 768) {
+                $('.sidebar').removeClass('show');
+                $('#mobileBackdrop').removeClass('show');
+            }
+        });
+
+        // Initialize proper state based on screen size
+        function initializeSidebar() {
+            if ($(window).width() <= 768) {
+                $('.sidebar').removeClass('show');
+                $('#mobileBackdrop').removeClass('show');
+            }
+        }
+
+        // Call on page load
+        initializeSidebar();
     });
     </script>
 

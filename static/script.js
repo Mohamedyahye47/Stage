@@ -36,3 +36,21 @@
         e.preventDefault();
     });
 })(jQuery);
+
+
+// Toggle sidebar (mobile et desktop)
+document.addEventListener('DOMContentLoaded', function () {
+    const toggleButtons = [
+        document.getElementById('topbarSidebarToggle'),
+        document.getElementById('topbarSidebarToggleDesktop')
+    ];
+    const sidebar = document.getElementById('accordionSidebar');
+
+    toggleButtons.forEach(btn => {
+        if (btn) {
+            btn.addEventListener('click', () => {
+                sidebar.classList.toggle('active');
+            });
+        }
+    });
+});

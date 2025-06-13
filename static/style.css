@@ -5,6 +5,26 @@ body {
     color: #333;
 }
 
+/* Sidebar adjustments */
+.sidebar {
+    width: 240px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 1030;
+}
+
+/* Ensure main content fills the rest of the page */
+#content-wrapper {
+    background-color: #f8f9fc;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+
+
+
 /* Navigation Menu */
 .nav-menu {
     background: #2c3e50;
