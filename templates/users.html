@@ -5,7 +5,16 @@
 {% block content %}
 <div class="container-fluid">
     <h1 class="h3 mb-4 text-gray-800">Gestion des Utilisateurs</h1>
-    
+
+    <!-- Create Account Button -->
+    {% if current_user.is_admin %}
+    <div class="mb-4 text-center">
+        <a class="btn btn-primary btn-sm" href="{{ url_for('register') }}">
+            <i class="fas fa-user-plus fa-sm mr-1"></i> Créer un compte
+        </a>
+    </div>
+    {% endif %}
+
     <div class="card shadow mb-4">
         <div class="card-body">
             <div class="table-responsive">
@@ -19,25 +28,23 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for user in users if user.id != 2 %} <!-- Exclude admin (ID 2) from the list -->
+                        {% for user in users if user.id != 2 %}
                         <tr>
                             <td>{{ user.id }}</td>
                             <td>{{ user.username }}</td>
                             <td>{{ user.email }}</td>
                             <td>
-                                {% if current_user.id == 2 %} <!-- Use ID check instead of is_admin -->
+                                {% if current_user.is_admin %}
                                 <form action="{{ url_for('delete_account', user_id=user.id) }}" method="POST" style="display: inline;" data-confirm-delete>
                                     <button type="submit" class="btn btn-danger btn-sm">
                                         <i class="fas fa-trash"></i> Supprimer
                                     </button>
                                 </form>
-                                {% else %}
-                                <span class="text-muted">Réservé aux administrateurs</span>
                                 {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
-                        {% if not users or users|length <= 1 %}
+                        {% if not users %}
                         <tr>
                             <td colspan="4" class="text-center text-muted">Aucun utilisateur à afficher.</td>
                         </tr>
@@ -48,4 +55,16 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.querySelectorAll('[data-confirm-delete]').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            if (!confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
+                e.preventDefault();
+            }
+        });
+    });
+</script>
 {% endblock %}

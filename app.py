@@ -14,29 +14,27 @@ import numpy as np
 from scipy.stats import chi2_contingency
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 import logging
+from decimal import Decimal
+from jinja2 import Undefined
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
-app.config['WTF_CSRF_ENABLED'] = False  # Disable CSRF protection
-
-# Security: Replace with a secure random key in production
+app.config['WTF_CSRF_ENABLED'] = False
 app.secret_key = os.environ.get('FLASK_SECRET', os.urandom(24))
-app.config['UPLOAD_FOLDER'] = 'Uploads'
-app.config['PROFILE_UPLOAD_FOLDER'] = 'static/uploads/profiles'
+app.config['UPLOAD_FOLDER'] = '/home/yahyamed/Stage/static/uploads'
+app.config['PROFILE_UPLOAD_FOLDER'] = '/home/yahyamed/Stage/static/uploads/profiles'
 app.config['ALLOWED_EXTENSIONS'] = {'pdf'}
 app.config['ALLOWED_PROFILE_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB per file
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-# Flask-Login setup
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# User class
 class User(UserMixin):
     def __init__(self, id, is_admin=False):
         self.id = id
@@ -54,7 +52,7 @@ def load_user(user_id):
         conn = get_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT id, username, photo_profil 
+            SELECT id, username, photo_profil
             FROM users WHERE id = %s
         """, (user_id,))
         user_data = cursor.fetchone()
@@ -75,7 +73,6 @@ def load_user(user_id):
         if 'conn' in locals():
             conn.close()
 
-# Database configuration
 db_config = {
     'host': os.environ.get('MYSQL_HOST', 'localhost'),
     'user': os.environ.get('MYSQL_USER', 'root'),
@@ -83,7 +80,6 @@ db_config = {
     'database': os.environ.get('MYSQL_DB', 'data_upload')
 }
 
-# Custom filter for number formatting (French format)
 def format_number(value):
     try:
         return "{:,.2f}".format(float(value)).replace(",", " ").replace(".", ",").replace("'", " ")
@@ -100,13 +96,14 @@ def allowed_profile_file(filename):
 
 def get_connection():
     try:
-        return mysql.connector.connect(**db_config)
+        conn = mysql.connector.connect(**db_config)
+        logger.info("Successfully connected to database")
+        return conn
     except mysql.connector.Error as err:
         logger.error(f"Database connection error: {str(err)}")
         flash(f'Erreur de connexion à la base de données : {str(err)}', 'danger')
         raise
 
-# Context processor to inject user data into all templates
 @app.context_processor
 def inject_user():
     if current_user.is_authenticated:
@@ -121,12 +118,32 @@ def inject_user():
         }
     return {'current_user': None}
 
-def extract_invoice_data(pdf_path):
+def convert_decimals(obj):
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, Undefined):
+        logger.warning(f"Encountered Undefined object: {obj}")
+        return None
+    elif isinstance(obj, str):
+        try:
+            return float(obj) if '.' in obj or 'e' in obj.lower() else int(obj)
+        except ValueError:
+            return obj
+    elif isinstance(obj, dict):
+        return {k: convert_decimals(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_decimals(item) for item in obj]
+    elif obj is None:
+        return None
+    else:
+        logger.warning(f"Unhandled type in convert_decimals: {type(obj)}")
+        return obj
+
+def extract_invoice_data(file_stream):
     text = ""
-    with open(pdf_path, 'rb') as file:
-        pdf_reader = PyPDF2.PdfReader(file)
-        for page in pdf_reader.pages:
-            text += page.extract_text() + "\n"
+    pdf_reader = PyPDF2.PdfReader(file_stream)
+    for page in pdf_reader.pages:
+        text += page.extract_text() + "\n"
 
     def extract_ot_number(text):
         patterns = [
@@ -578,7 +595,7 @@ def get_invoices_table(offset=0, limit=10, search_query=None, selected_month=Non
             params.extend([search_query, search_query, search_query, search_query])
 
         query = f"""
-            SELECT 
+            SELECT
                 ot_number,
                 DATE_FORMAT(invoice_date, '%Y-%m-%d') as invoice_date,
                 societe,
@@ -586,9 +603,9 @@ def get_invoices_table(offset=0, limit=10, search_query=None, selected_month=Non
                 COALESCE(quantite, 0) as quantite,
                 COALESCE(total_usd, 0) as total_usd,
                 total_sans_fret
-            FROM invoices 
+            FROM invoices
             {where_clause}
-            ORDER BY created_at DESC 
+            ORDER BY invoice_date DESC, id DESC
             LIMIT %s OFFSET %s
         """
         params.extend([limit, offset])
@@ -602,15 +619,20 @@ def get_invoices_table(offset=0, limit=10, search_query=None, selected_month=Non
         """, params[:-2])
         total_count = cursor.fetchone()['total_count']
 
+        logger.info(f"User ID {current_user.id} fetched invoices table; offset={offset}, query='{search_query}', month='{selected_month}', retrieved={len(invoices)}")
         return render_template('invoices_table.html', invoices=invoices, offset=offset, total_count=total_count,
-                               search_query=search_query, selected_month=selected_month)
+                              search_query=search_query, selected_month=selected_month)
+    except mysql.connector.Error as err:
+        logger.error(f"Database error in get_invoices_table: {str(err)}")
+        flash(f'Erreur de base de données : {str(err)}', 'danger')
+        return render_template('invoices_table.html', invoices=[], offset=offset, total_count=0,
+                              search_query=search_query, selected_month=selected_month)
     finally:
         if 'cursor' in locals():
             cursor.close()
         if 'conn' in locals():
             conn.close()
 
-# Decorators
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -632,7 +654,23 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Routes
+
+@app.route('/get_invoices_table', methods=['GET'])
+@login_required
+def get_invoices_table_route():
+    try:
+        offset = int(request.args.get('offset', 0))
+        search_query = request.args.get('q', '').strip()
+        selected_month = request.args.get('month', '').strip()
+        return get_invoices_table(offset=offset, limit=10, search_query=search_query, selected_month=selected_month)
+    except ValueError as e:
+        logger.error(f"Invalid parameter in get_invoices_table_route: {str(e)}")
+        flash('Paramètres invalides', 'danger')
+        return render_template('invoices_table.html', invoices=[], offset=0, total_count=0,
+                              search_query='', selected_month='')
+
+
+
 @app.route('/')
 def home():
     return redirect(url_for('login'))
@@ -685,14 +723,12 @@ def register():
             conn = get_connection()
             cursor = conn.cursor(dictionary=True)
 
-            # Check if email exists
             cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
             if cursor.fetchone():
                 logger.warning(f"Registration failed: Email {email} already exists")
                 flash('Cet email est déjà utilisé', 'danger')
                 return redirect(url_for('register'))
 
-            # Insert new user
             cursor.execute(
                 "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)",
                 (username, email, password)
@@ -766,14 +802,53 @@ def search_invoices():
     logger.info(f"User ID {current_user.id} searched invoices with query: {search_query}, month: {selected_month}")
     return render_template('dashboard.html', **data, table_html=table_html)
 
-@app.route('/get_invoices_table')
-@login_required
-def get_invoices_table_route():
-    offset = request.args.get('offset', type=int, default=0)
-    search_query = request.args.get('q', '')
-    selected_month = request.args.get('month', '')
-    logger.info(f"User ID {current_user.id} requested invoices table with offset {offset}")
-    return get_invoices_table(offset=offset, search_query=search_query, selected_month=selected_month)
+def get_invoices_table(offset=0, limit=10, search_query=None, selected_month=None):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        where_clause = " WHERE 1=1"
+        params = []
+        if selected_month:
+            where_clause += " AND DATE_FORMAT(invoice_date, '%Y-%m') = %s"
+            params.append(selected_month)
+        if search_query and search_query.strip():
+            search_query = f"%{search_query}%"
+            where_clause += " AND (ot_number LIKE %s OR societe LIKE %s OR produit LIKE %s OR invoice_date LIKE %s)"
+            params.extend([search_query, search_query, search_query, search_query])
+
+        query = f"""
+            SELECT
+                ot_number,
+                DATE_FORMAT(invoice_date, '%Y-%m-%d') as invoice_date,
+                societe,
+                produit,
+                COALESCE(quantite, 0) as quantite,
+                COALESCE(total_usd, 0) as total_usd,
+                total_sans_fret
+            FROM invoices
+            {where_clause}
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+        """
+        params.extend([limit, offset])
+        cursor.execute(query, params)
+        invoices = cursor.fetchall()
+
+        cursor.execute(f"""
+            SELECT COUNT(*) as total_count
+            FROM invoices
+            {where_clause}
+        """, params[:-2])
+        total_count = cursor.fetchone()['total_count']
+
+        return render_template('invoices_table.html', invoices=invoices, offset=offset, total_count=total_count,
+                               search_query=search_query, selected_month=selected_month)
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 @app.route('/upload', methods=['GET', 'POST'])
 @login_required
@@ -782,7 +857,7 @@ def upload():
         if 'file' not in request.files:
             logger.warning(f"User ID {current_user.id} attempted to upload without selecting a file")
             flash('Aucun fichier sélectionné', 'danger')
-            return redirect(request.url)
+            return redirect(url_for('upload'))
 
         file = request.files['file']
         societe = request.form.get('societe')
@@ -790,17 +865,21 @@ def upload():
         if file.filename == '':
             logger.warning(f"User ID {current_user.id} attempted to upload an empty file")
             flash('Aucun fichier sélectionné', 'danger')
-            return redirect(request.url)
+            return redirect(url_for('upload'))
 
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-
             try:
-                invoice_data = extract_invoice_data(filepath)
+                # Process PDF in memory using BytesIO (compatible with extract_invoice_data(file_stream))
+                file_stream = BytesIO(file.read())
+                file_stream.seek(0)  # Reset stream for PyPDF2.PdfReader
+                invoice_data = extract_invoice_data(file_stream)  # Expects extract_invoice_data to handle BytesIO
                 invoice_data['societe'] = societe or invoice_data['societe']
-                invoice_date = invoice_data['invoice_date']
+                invoice_date = invoice_data.get('invoice_date')
+
+                if not invoice_data['ot_number']:
+                    logger.warning(f"User ID {current_user.id} uploaded file with missing OT number")
+                    flash('Erreur : Numéro d\'ordre de transfert introuvable dans la facture', 'danger')
+                    return redirect(url_for('upload'))
 
                 conn = get_connection()
                 cursor = conn.cursor()
@@ -821,17 +900,16 @@ def upload():
                 return redirect(url_for('dashboard'))
             except mysql.connector.Error as err:
                 if err.errno == 1062:
-                    logger.warning(
-                        f"Duplicate invoice OT number {invoice_data['ot_number']} by user ID {current_user.id}")
-                    flash(f"Erreur : L'ordre de transfert n° {invoice_data['ot_number']} existe déjà", 'danger')
+                    logger.warning(f"Duplicate invoice OT number {invoice_data.get('ot_number', 'Unknown')} by user ID {current_user.id}")
+                    flash(f"Erreur : L'ordre de transfert n° {invoice_data.get('ot_number', 'Unknown')} existe déjà", 'danger')
                 else:
                     logger.error(f"Database error in upload: {str(err)}")
                     flash(f'Erreur de base de données : {str(err)}', 'danger')
-                return redirect(request.url)
+                return redirect(url_for('upload'))
             except Exception as e:
-                logger.error(f"Error processing invoice upload: {str(e)}")
+                logger.error(f"Error processing invoice upload for user ID {current_user.id}: {str(e)}")
                 flash(f'Erreur lors du traitement de la facture : {str(e)}', 'danger')
-                return redirect(request.url)
+                return redirect(url_for('upload'))
             finally:
                 if 'cursor' in locals():
                     cursor.close()
@@ -939,7 +1017,7 @@ def telecharger_excel():
 
     try:
         query = """
-            SELECT 
+            SELECT
                 ot_number,
                 invoice_date,
                 destination,
@@ -1028,7 +1106,7 @@ def profile():
 
             if not new_username or not new_email:
                 logger.warning(f"User ID {user_id} attempted profile update without username or email")
-                flash('Le nom d\'utilisateur et l\'email sont requis.', 'danger')
+                flash('Le nom d\'utilisateur et l\'email sont requis requis.', 'danger')
                 return redirect(url_for('profile'))
 
             cursor.execute("SELECT id FROM users WHERE email = %s AND id != %s", (new_email, user_id))
@@ -1058,12 +1136,11 @@ def profile():
                 hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
                 cursor.execute("UPDATE users SET password = %s WHERE id = %s", (hashed_password, user_id))
                 logger.info(f"User ID {user_id} updated password")
-                flash('Mot de passe mis à jour avec succès!', 'success')
+                flash('Mot de passe mis à jour avec succès !', 'success')
 
             photo_path = None
             if profile_photo and allowed_profile_file(profile_photo.filename):
-                if not os.path.exists(app.config['PROFILE_UPLOAD_FOLDER']):
-                    os.makedirs(app.config['PROFILE_UPLOAD_FOLDER'])
+                os.makedirs(app.config['PROFILE_UPLOAD_FOLDER'], exist_ok=True)
                 filename = secure_filename(profile_photo.filename)
                 photo_path = os.path.join(app.config['PROFILE_UPLOAD_FOLDER'], f"{user_id}_{filename}")
                 profile_photo.save(photo_path)
@@ -1161,7 +1238,6 @@ def delete_account(user_id):
 
         cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
         logger.info(f"Deleted user ID {user_id}")
-
         conn.commit()
         flash('Compte supprimé avec succès.', 'success')
         return redirect(url_for('user_management'))
@@ -1227,8 +1303,4 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'])
-    if not os.path.exists(app.config['PROFILE_UPLOAD_FOLDER']):
-        os.makedirs(app.config['PROFILE_UPLOAD_FOLDER'])
     app.run(host='0.0.0.0', port=5000, debug=True)

@@ -9,7 +9,7 @@
                     <i class="fa fa-bars"></i>
                 </button>
                 <a class="navbar-brand" href="{{ url_for('dashboard') }}">
-                    <img src="{{ url_for('static', filename='img/Pasted image.png') }}" alt="Logo" style="height: 39px; margin-top: 5px;">
+                    <img src="{{ url_for('static', filename='img/Pasted image.png') }}" alt="Logo" style="height: 37px; margin-top: 10px; ">
                 </a>
             </div>
         </li>
@@ -46,15 +46,7 @@
                     <!-- Divider -->
                     <div class="dropdown-divider"></div>
 
-                    <!-- Create Account (Admin Only) -->
-                    {% if current_user.id == 2 %}
-                    <div class="text-center px-4 py-2">
-                        <a class="btn btn-primary btn-sm btn-block" href="{{ url_for('register') }}">
-                            <i class="fas fa-user-plus fa-sm mr-1"></i>
-                            Create Account
-                        </a>
-                    </div>
-                    {% endif %}
+
 
                     <!-- Logout -->
                     <a class="dropdown-item" href="{{ url_for('logout') }}">

@@ -27,9 +27,9 @@
             background-color: #f8f9fc;
         }
 
-        /* Sidebar Styles - Always visible on desktop */
+        /* Sidebar Styles - Scrollable and always visible on desktop */
         .sidebar {
-            position: fixed !important;
+            position: fixed;
             top: 0;
             left: 0;
             width: 14rem;
@@ -37,13 +37,17 @@
             z-index: 1030;
             background: linear-gradient(180deg, #4e73df 10%, #224abe 100%);
             overflow-y: auto;
-            transition: all 0.3s ease;
+            overflow-x: hidden;
+            transition: transform 0.3s ease;
             transform: translateX(0);
+            /* Improved scrolling */
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
         }
 
         /* Topbar - Fixed positioning */
         .topbar {
-            position: fixed !important;
+            position: fixed;
             top: 0;
             left: 14rem;
             right: 0;
@@ -64,7 +68,7 @@
         }
 
         #content {
-            padding-top: 1rem;
+            padding: 1rem;
         }
 
         /* Container spacing */
@@ -75,7 +79,7 @@
         /* Sidebar toggle buttons - Hidden on desktop */
         #sidebarToggle,
         #sidebarToggleTop {
-            display: none !important;
+            display: none;
         }
 
         /* Footer positioning */
@@ -89,11 +93,11 @@
         @media (max-width: 768px) {
             /* Hide sidebar by default on mobile */
             .sidebar {
-                transform: translateX(-14rem);
+                transform: translateX(-100%);
             }
 
             /* Show sidebar when active */
-            .sidebar.show {
+            .sidebar.mobile-show {
                 transform: translateX(0);
             }
 
@@ -114,12 +118,84 @@
 
             /* Show mobile toggle button */
             #sidebarToggleTop {
-                display: inline-block !important;
+                display: inline-block;
             }
 
             /* Sidebar overlay on mobile */
-            .sidebar.show {
+            .sidebar.mobile-show {
                 box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            }
+
+            /* Mobile image/logo positioning fixes */
+            .container-fluid img {
+                max-width: 150px;
+                height: auto;
+                display: block;
+                margin: 0 auto 1rem auto;
+            }
+
+            /* Fix for company logo in content area */
+            .content img[src*="logo"],
+            .content img[alt*="logo"],
+            .content img[alt*="ADDAX"],
+            img[alt*="ADDAX"] {
+                max-width: 120px;
+                width: 100%;
+                height: auto;
+                display: block;
+                margin: 0 auto 1rem auto;
+                object-fit: contain;
+            }
+
+            /* Fix for header/topbar logo on mobile */
+            .topbar .navbar-brand img,
+            .navbar-brand img {
+                height: 30px !important;
+                max-width: 100px;
+                width: auto;
+            }
+
+            /* Topbar menu container adjustment */
+            .topbar-menu-container {
+                display: flex;
+                align-items: center;
+            }
+
+            /* Sidebar toggle button spacing */
+            #sidebarToggleTop {
+                margin-right: 0.5rem !important;
+            }
+
+            /* Adjust content padding on mobile */
+            #content {
+                padding: 0.5rem;
+            }
+
+            .container-fluid {
+                padding-left: 15px;
+                padding-right: 15px;
+            }
+
+            /* Mobile typography adjustments */
+            h1, h2, h3, h4, h5, h6 {
+                font-size: 1.2rem;
+                text-align: center;
+                margin-bottom: 1rem;
+            }
+
+            /* Card adjustments for mobile */
+            .card {
+                margin-bottom: 1rem;
+                border-radius: 0.5rem;
+            }
+
+            .card-body {
+                padding: 1rem;
+            }
+
+            /* Dashboard stats cards on mobile */
+            .col-xl-3, .col-md-6, .col-lg-4 {
+                margin-bottom: 1rem;
             }
         }
 
@@ -135,13 +211,14 @@
             }
         }
 
-        /* Sidebar scrollbar styling */
+        /* Sidebar scrollbar styling - Webkit browsers */
         .sidebar::-webkit-scrollbar {
             width: 6px;
         }
 
         .sidebar::-webkit-scrollbar-track {
             background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
         }
 
         .sidebar::-webkit-scrollbar-thumb {
@@ -162,6 +239,7 @@
             justify-content: center;
             background-color: rgba(0, 0, 0, 0.1);
             color: white;
+            flex-shrink: 0; /* Prevent shrinking */
         }
 
         .sidebar .sidebar-brand:hover {
@@ -184,11 +262,14 @@
             border-radius: 0.35rem;
             margin: 0 0.5rem;
             transition: all 0.3s;
+            display: flex;
+            align-items: center;
         }
 
         .sidebar .nav-link:hover {
             color: white;
             background-color: rgba(255, 255, 255, 0.1);
+            text-decoration: none;
         }
 
         .sidebar .nav-item.active .nav-link {
@@ -198,8 +279,9 @@
 
         .sidebar .nav-link i {
             font-size: 0.85rem;
-            margin-right: 0.25rem;
+            margin-right: 0.5rem;
             width: 1rem;
+            text-align: center;
         }
 
         .sidebar .sidebar-divider {
@@ -217,15 +299,110 @@
             background-color: rgba(0, 0, 0, 0.5);
             z-index: 1025;
             display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
 
         .mobile-backdrop.show {
             display: block;
+            opacity: 1;
         }
 
         /* Alert positioning fix */
         .alert {
             margin-bottom: 1rem;
+        }
+
+        /* Smooth transitions for sidebar */
+        .sidebar {
+            will-change: transform;
+        }
+
+        /* Ensure proper padding for scrollable content */
+        .sidebar .sidebar-content {
+            padding-bottom: 2rem;
+        }
+
+        /* Global mobile image fixes */
+        @media (max-width: 768px) {
+            /* General image responsiveness */
+            img {
+                max-width: 100% !important;
+                height: auto !important;
+            }
+
+            /* Specific fixes for logos and brand images */
+            .brand-logo,
+            .company-logo,
+            .page-header img,
+            .content-header img {
+                max-width: 250px;
+                width: 100%;
+                height: auto;
+                display: block;
+                margin: 0 auto 1rem auto;
+                object-fit: contain;
+            }
+
+            /* Fix for any floating or absolute positioned images */
+            .float-left, .float-right {
+                float: none !important;
+                display: block;
+                margin: 0 auto 1rem auto;
+            }
+
+            /* Ensure proper spacing around images */
+            .text-center img,
+            .d-flex img {
+                margin-bottom: 1rem;
+            }
+
+            /* Better mobile layout for dashboard cards */
+            .row .col-12,
+            .row .col-sm-12,
+            .row .col-md-6,
+            .row .col-lg-4,
+            .row .col-xl-3 {
+                padding-left: 10px;
+                padding-right: 10px;
+            }
+
+            /* Mobile-optimized content spacing */
+            .page-heading,
+            .content-header {
+                text-align: center;
+                padding: 1rem 0;
+            }
+
+            /* Fix for any sticky or fixed positioned content on mobile */
+            .sticky-top {
+                position: relative !important;
+            }
+        }
+
+        /* Additional mobile optimizations */
+        @media (max-width: 576px) {
+            /* Extra small screens */
+            .topbar {
+                padding: 0 1rem;
+            }
+
+            .container-fluid {
+                padding-left: 10px;
+                padding-right: 10px;
+            }
+
+            /* Smaller logo on very small screens */
+            .brand-logo,
+            .company-logo {
+                max-width: 180px;
+            }
+
+            /* Adjust font sizes for small screens */
+            h1 { font-size: 1.5rem; }
+            h2 { font-size: 1.3rem; }
+            h3 { font-size: 1.2rem; }
+            h4 { font-size: 1.1rem; }
         }
     </style>
 
@@ -346,6 +523,8 @@
 
     <script>
     $(document).ready(function() {
+        let sidebarToggling = false; // Flag to prevent multiple toggles
+
         // Handle user account deletion confirmation
         $('form[data-confirm-delete]').on('submit', function(e) {
             e.preventDefault();
@@ -354,56 +533,99 @@
             $('#deleteConfirmModal').modal('show');
         });
 
-        // Mobile sidebar toggle only
-        $('#sidebarToggleTop').on('click', function(e) {
+        // Mobile sidebar toggle - Single click handler
+        $('#sidebarToggleTop').off('click').on('click', function(e) {
             e.preventDefault();
-            $('.sidebar').toggleClass('show');
-            $('#mobileBackdrop').toggleClass('show');
+            e.stopPropagation();
+
+            if (sidebarToggling) return; // Prevent multiple rapid clicks
+            sidebarToggling = true;
+
+            const $sidebar = $('.sidebar');
+            const $backdrop = $('#mobileBackdrop');
+
+            if ($sidebar.hasClass('mobile-show')) {
+                // Hide sidebar
+                $sidebar.removeClass('mobile-show');
+                $backdrop.removeClass('show');
+            } else {
+                // Show sidebar
+                $sidebar.addClass('mobile-show');
+                $backdrop.addClass('show');
+            }
+
+            // Reset flag after animation
+            setTimeout(() => {
+                sidebarToggling = false;
+            }, 350);
         });
 
         // Close mobile sidebar when clicking backdrop
-        $('#mobileBackdrop').on('click', function() {
-            $('.sidebar').removeClass('show');
-            $('#mobileBackdrop').removeClass('show');
+        $('#mobileBackdrop').off('click').on('click', function(e) {
+            e.preventDefault();
+            closeMobileSidebar();
         });
 
-        // Close mobile sidebar when clicking outside
-        $(document).on('click', function(event) {
+        // Function to close mobile sidebar
+        function closeMobileSidebar() {
             if ($(window).width() <= 768) {
-                if (!$(event.target).closest('.sidebar, #sidebarToggleTop').length) {
-                    $('.sidebar').removeClass('show');
-                    $('#mobileBackdrop').removeClass('show');
+                $('.sidebar').removeClass('mobile-show');
+                $('#mobileBackdrop').removeClass('show');
+            }
+        }
+
+        // Close mobile sidebar when clicking outside (but not on toggle button)
+        $(document).off('click.sidebar').on('click.sidebar', function(event) {
+            if ($(window).width() <= 768) {
+                const $target = $(event.target);
+                const isToggleButton = $target.closest('#sidebarToggleTop').length > 0;
+                const isSidebar = $target.closest('.sidebar').length > 0;
+
+                if (!isToggleButton && !isSidebar && $('.sidebar').hasClass('mobile-show')) {
+                    closeMobileSidebar();
                 }
             }
         });
 
         // Handle window resize
-        $(window).on('resize', function() {
+        $(window).off('resize.sidebar').on('resize.sidebar', function() {
             if ($(window).width() > 768) {
-                // Ensure sidebar is always visible on desktop and remove mobile classes
-                $('.sidebar').removeClass('show');
+                // Desktop: ensure sidebar is visible and remove mobile classes
+                $('.sidebar').removeClass('mobile-show');
                 $('#mobileBackdrop').removeClass('show');
+            } else {
+                // Mobile: ensure sidebar is hidden by default
+                if (!$('.sidebar').hasClass('mobile-show')) {
+                    $('.sidebar').removeClass('mobile-show');
+                    $('#mobileBackdrop').removeClass('show');
+                }
             }
         });
 
         // Close mobile sidebar after clicking navigation link
-        $('.sidebar .nav-link').on('click', function() {
+        $('.sidebar .nav-link').off('click.sidebar').on('click.sidebar', function() {
             if ($(window).width() <= 768) {
-                $('.sidebar').removeClass('show');
-                $('#mobileBackdrop').removeClass('show');
+                setTimeout(() => {
+                    closeMobileSidebar();
+                }, 150); // Small delay to allow navigation
             }
         });
 
         // Initialize proper state based on screen size
         function initializeSidebar() {
             if ($(window).width() <= 768) {
-                $('.sidebar').removeClass('show');
+                $('.sidebar').removeClass('mobile-show');
                 $('#mobileBackdrop').removeClass('show');
             }
         }
 
         // Call on page load
         initializeSidebar();
+
+        // Prevent event bubbling on sidebar toggle button
+        $('#sidebarToggleTop').off('touchstart mousedown').on('touchstart mousedown', function(e) {
+            e.stopPropagation();
+        });
     });
     </script>
 
