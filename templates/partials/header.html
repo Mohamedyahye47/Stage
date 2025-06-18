@@ -5,11 +5,11 @@
         <!-- Left side: Menu Toggle + Logo -->
         <li class="nav-item">
             <div class="topbar-menu-container">
-                <button id="sidebarToggleTop" class="btn btn-link d-block rounded-scare mr-3">
+                <button id="sidebarToggleTop" class="btn btn-link d-block rounded-circle mr-3">
                     <i class="fa fa-bars"></i>
                 </button>
                 <a class="navbar-brand" href="{{ url_for('dashboard') }}">
-                    <img src="{{ url_for('static', filename='img/Pasted image.png') }}" alt="Logo" style="height: 37px; margin-top: 10px; ">
+                    <img src="{{ url_for('static', filename='img/Pasted image.png') }}" alt="Logo" style="height: 37px; margin-top: 10px;">
                 </a>
             </div>
         </li>
@@ -18,35 +18,35 @@
         <li class="nav-item dropdown no-arrow ml-auto">
             <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
                data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                <span class="mr-2 d-none d-lg-inline text-gray-600 small">
-                    {{ current_user.username if current_user and current_user.is_authenticated else 'Utilisateur' }}
+                <span class="mr-2 d-none d-lg-inline text-gray-600 small" data-session="{{ session|tojson }}">
+                    {{ session.get('username') or 'Utilisateur Inconnu' }}
+                    {% if session.get('is_admin') %}
+                        <span class="badge badge-primary ml-1">Admin</span>
+                    {% endif %}
                 </span>
                 <img class="img-profile rounded-circle"
-                     src="{{ url_for('static', filename=current_user.photo_profil) if current_user and current_user.is_authenticated and current_user.photo_profil else url_for('static', filename='img/undraw_profile.svg') }}"
+                     src="{{ url_for('static', filename=session.get('photo_profil') or 'img/undraw_profile.svg') }}"
                      alt="Profile Image">
             </a>
 
             <!-- Dropdown - User Information -->
             <div class="dropdown-menu dropdown-menu-right shadow animated--grow-in" aria-labelledby="userDropdown">
-                {% if current_user and current_user.is_authenticated %}
+                {% if session.get('user_id') %}
                     <!-- Profile -->
                     <a class="dropdown-item" href="{{ url_for('profile') }}">
                         <i class="fas fa-user fa-sm fa-fw mr-2 text-gray-400"></i>
                         Profil
                     </a>
 
-                    <!-- Users (Admin Only) -->
-                    {% if current_user.id == 2 %}
-                    <a class="dropdown-item" href="{{ url_for('user_management') }}">
-                        <i class="fas fa-users fa-sm fa-fw mr-2 text-gray-400"></i>
-                        Gestion des Utilisateurs
-                    </a>
+                    <!-- Admin Menu Items -->
+                    {% if session.get('is_admin') %}
+                        <a class="dropdown-item" href="{{ url_for('user_management') }}">
+                            <i class="fas fa-users fa-sm fa-fw mr-2 text-gray-400"></i>
+                            Gestion des Utilisateurs
+                        </a>
+
+                        <div class="dropdown-divider"></div>
                     {% endif %}
-
-                    <!-- Divider -->
-                    <div class="dropdown-divider"></div>
-
-
 
                     <!-- Logout -->
                     <a class="dropdown-item" href="{{ url_for('logout') }}">

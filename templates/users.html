@@ -1,3 +1,4 @@
+html
 {% extends 'base.html' %}
 
 {% block title %}Gestion des Utilisateurs{% endblock %}
@@ -6,8 +7,11 @@
 <div class="container-fluid">
     <h1 class="h3 mb-4 text-gray-800">Gestion des Utilisateurs</h1>
 
+
+
+
     <!-- Create Account Button -->
-    {% if current_user.is_admin %}
+    {% if session.is_admin %}
     <div class="mb-4 text-center">
         <a class="btn btn-primary btn-sm" href="{{ url_for('register') }}">
             <i class="fas fa-user-plus fa-sm mr-1"></i> Créer un compte
@@ -15,7 +19,11 @@
     </div>
     {% endif %}
 
+    <!-- Users Table -->
     <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Liste des Utilisateurs</h6>
+        </div>
         <div class="card-body">
             <div class="table-responsive">
                 <table class="table table-bordered" width="100%" cellspacing="0">
@@ -23,48 +31,47 @@
                         <tr>
                             <th>ID</th>
                             <th>Nom d'utilisateur</th>
+                            <th>Rôle</th>
                             <th>Email</th>
+                            {% if session.get('is_admin') %}
                             <th>Actions</th>
+                            {% endif %}
                         </tr>
                     </thead>
                     <tbody>
-                        {% for user in users if user.id != 2 %}
+                        {% for user in users %}
                         <tr>
                             <td>{{ user.id }}</td>
                             <td>{{ user.username }}</td>
-                            <td>{{ user.email }}</td>
                             <td>
-                                {% if current_user.is_admin %}
+                                {% if user.is_admin %}
+                                    <span class="badge badge-primary">Admin</span>
+                                {% else %}
+                                    <span class="badge badge-secondary">Utilisateur</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ user.email }}</td>
+                            {% if session.get('is_admin') %}
+                            <td>
                                 <form action="{{ url_for('delete_account', user_id=user.id) }}" method="POST" style="display: inline;" data-confirm-delete>
                                     <button type="submit" class="btn btn-danger btn-sm">
                                         <i class="fas fa-trash"></i> Supprimer
                                     </button>
                                 </form>
-                                {% endif %}
                             </td>
+                            {% endif %}
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="{% if session.get('is_admin') %}5{% else %}4{% endif %}" class="text-center text-muted">Aucun utilisateur à afficher.</td>
                         </tr>
                         {% endfor %}
-                        {% if not users %}
-                        <tr>
-                            <td colspan="4" class="text-center text-muted">Aucun utilisateur à afficher.</td>
-                        </tr>
-                        {% endif %}
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-    document.querySelectorAll('[data-confirm-delete]').forEach(form => {
-        form.addEventListener('submit', function(e) {
-            if (!confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
-                e.preventDefault();
-            }
-        });
-    });
-</script>
+
 {% endblock %}

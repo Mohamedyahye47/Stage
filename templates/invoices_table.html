@@ -8,7 +8,7 @@
             <th>Quantité (MT)</th>
             <th>Total USD</th>
             <th>Total sans Fret</th>
-            {% if current_user.is_admin %}
+            {% if session.is_admin %}
             <th>Actions</th>
             {% endif %}
         </tr>
@@ -23,7 +23,7 @@
             <td>{{ invoice.quantite | format_number }}</td>
             <td>${{ invoice.total_usd | format_number }}</td>
             <td>${{ invoice.total_sans_fret | format_number }}</td>
-            {% if current_user.is_admin %}
+            {% if session.is_admin %}
             <td>
                 <button class="btn btn-danger btn-sm delete-invoice-btn"
                         data-ot-number="{{ invoice.ot_number }}"
