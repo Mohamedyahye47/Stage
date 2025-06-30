@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Gestion des Entités</h2>
+
+
+
+    <!-- Create Form -->
+    <h3>Ajouter une nouvelle entité</h3>
+    <form method="POST" action="{{ url_for('edit_entities') }}">
+        <input type="hidden" name="action" value="create">
+        <div class="form-group">
+            <label for="entity_type">Type d'entité</label>
+            <select id="entity_type" name="entity_type" class="form-control" required>
+                <option value="societe">Société</option>
+                <option value="produit">Produit</option>
+                <option value="destination">Destination</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="nom">Nom</label>
+            <input id="nom" type="text" name="nom" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Créer</button>
+    </form>
+
+    <!-- Update/Delete Forms -->
+    {% for entity_type, entities in [('societes', societes), ('produits', produits), ('destinations', destinations)] %}
+        <h3>{{ entity_type[:-1]|capitalize }}s</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nom</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entity in entities %}
+                    <tr>
+                        <td>{{ entity.id }}</td>
+                        <td>{{ entity.nom }}</td>
+                        <td>
+                            <!-- Update Form -->
+                            <form method="POST" action="{{ url_for('edit_entities') }}" style="display:inline;">
+                                <input type="hidden" name="action" value="update">
+                                <input type="hidden" name="entity_type" value="{{ entity_type[:-1] }}">
+                                <input type="hidden" name="id" value="{{ entity.id }}">
+                                <input id="update_nom_{{ entity.id }}" type="text" name="nom" value="{{ entity.nom }}" class="form-control d-inline-block w-50">
+                                <button type="submit" class="btn btn-warning btn-sm">Mettre à jour</button>
+                            </form>
+                            <!-- Delete Form -->
+                            <form method="POST" action="{{ url_for('edit_entities') }}" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette entité ?');">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="entity_type" value="{{ entity_type[:-1] }}">
+                                <input type="hidden" name="id" value="{{ entity.id }}">
+                                <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endfor %}
+</div>
+{% endblock %}

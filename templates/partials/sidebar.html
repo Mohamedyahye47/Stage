@@ -1,15 +1,28 @@
+<!-- Sidebar -->
 <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
+
+    <!-- Custom CSS to remove left spacing -->
+    <style>
+        #accordionSidebar .nav-item {
+            padding-left: 0 !important;
+            margin-left: 0 !important;
+        }
+        #accordionSidebar .nav-link {
+            padding-left: 1rem !important; /* optionnel : pour alignement propre des icônes */
+        }
+    </style>
+
     <!-- Sidebar - Brand -->
     <a class="sidebar-brand d-flex align-items-center justify-content-center" href="{{ url_for('dashboard') }}">
-        <div class="sidebar-brand-text mx-3">Factures Pétrolières</div>
+        <div class="mx-3">Factures Pétrolières</div>
     </a>
 
     <!-- Divider -->
     <hr class="sidebar-divider my-0">
 
     <!-- Nav Item - Dashboard -->
-    <li class="nav-item {{ 'active' if request.endpoint == 'dashboard' }}">
-        <a class="nav-link" href="{{ url_for('dashboard') }}">
+    <li class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+        <a class="nav-link w-100" href="{{ url_for('dashboard') }}">
             <i class="fas fa-fw fa-tachometer-alt"></i>
             <span>Tableau de Bord</span>
         </a>
@@ -18,18 +31,22 @@
     <!-- Divider -->
     <hr class="sidebar-divider">
 
-
-
     <!-- Nav Item - Upload -->
-    <li class="nav-item {{ 'active' if request.endpoint == 'upload' }}">
-        <a class="nav-link" href="{{ url_for('upload') }}">
+    <li class="nav-item {% if request.endpoint == 'upload' %}active{% endif %}">
+        <a class="nav-link w-100" href="{{ url_for('upload') }}">
             <i class="fas fa-fw fa-upload"></i>
             <span>Téléverser une Facture</span>
         </a>
     </li>
 
+    <!-- Nav Item - Insertion Manuelle -->
+    <li class="nav-item {% if request.endpoint == 'manuel_insertion' %}active{% endif %}">
+        <a class="nav-link w-100" href="{{ url_for('manuel_insertion') }}">
+            <i class="fas fa-fw fa-pencil-alt"></i>
+            <span>Insertion Manuelle</span>
+        </a>
+    </li>
+
     <!-- Divider -->
     <hr class="sidebar-divider d-none d-md-block">
-
-
 </ul>

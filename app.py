@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, jsonify
-from functools import wraps
 import os
 import PyPDF2
 import re
@@ -151,11 +150,13 @@ def extract_invoice_data(file_stream):
         'total_sans_fret': total_sans_fret
     }
 
+
 def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=None):
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
     try:
+        # Fetch available months
         cursor.execute("""
             SELECT DISTINCT DATE_FORMAT(invoice_date, '%Y-%m') as month
             FROM invoices
@@ -164,85 +165,129 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
         """)
         available_months = [row['month'] for row in cursor.fetchall()]
 
+        # Table where clause (includes search_query and selected_month)
         where_clause = " WHERE 1=1"
         params = []
         if selected_month:
-            where_clause += " AND DATE_FORMAT(invoice_date, '%Y-%m') = %s"
+            where_clause += " AND DATE_FORMAT(i.invoice_date, '%Y-%m') = %s"
             params.append(selected_month)
         if search_query and search_query.strip():
             search_query = f"%{search_query}%"
-            where_clause += " AND (ot_number LIKE %s OR societe LIKE %s OR produit LIKE %s OR invoice_date LIKE %s)"
-            params.extend([search_query, search_query, search_query, search_query])
+            where_clause += """
+                AND (
+                    i.ot_number LIKE %s OR
+                    DATE_FORMAT(i.invoice_date, '%%Y-%%m-%%d') LIKE %s OR
+                    s.nom LIKE %s OR
+                    p.nom LIKE %s OR
+                    d.nom LIKE %s
+                )
+            """
+            params.extend([search_query] * 5)
 
+        # Main table query (with search)
         query = f"""
             SELECT 
-                ot_number,
-                DATE_FORMAT(invoice_date, '%Y-%m-%d') as invoice_date,
-                societe,
-                produit,
-                COALESCE(quantite, 0) as quantite,
-                COALESCE(total_usd, 0) as total_usd,
-                total_sans_fret
-            FROM invoices 
+                i.ot_number,
+                DATE_FORMAT(i.invoice_date, '%Y-%m-%d') as invoice_date,
+                s.nom AS societe,
+                p.nom AS produit,
+                d.nom AS destination,
+                COALESCE(i.quantite, 0) AS quantite,
+                COALESCE(i.total_usd, 0) AS total_usd,
+                i.total_sans_fret
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            JOIN produit p ON i.produit_id = p.id
+            JOIN destination d ON i.destination_id = d.id
             {where_clause}
-            ORDER BY created_at DESC 
+            ORDER BY i.created_at DESC
             LIMIT %s OFFSET %s
         """
         params.extend([limit, offset])
+        logger.debug(f"Executing table query: {query} with params {params}")
         cursor.execute(query, params)
         invoices = cursor.fetchall()
 
-        cursor.execute(f"""
-            SELECT COUNT(*) as total_count
-            FROM invoices
-            {where_clause}
-        """, params[:-2])
-        total_count = cursor.fetchone()['total_count']
+        # Graph/stats where clause (only selected_month)
+        graph_clause = " WHERE 1=1"
+        graph_params = []
+        if selected_month:
+            graph_clause += " AND DATE_FORMAT(i.invoice_date, '%Y-%m') = %s"
+            graph_params.append(selected_month)
 
+        # Stats query (total invoices, total value, avg value)
         cursor.execute(f"""
             SELECT 
                 COUNT(*) as total_invoices,
-                COALESCE(SUM(total_usd), 0) as total_value,
-                COALESCE(AVG(total_usd), 0) as avg_value
-            FROM invoices
-            {where_clause}
-        """, params[:-2])
-        stats = cursor.fetchone()
+                COALESCE(SUM(i.total_usd), 0) as total_value,
+                COALESCE(AVG(i.total_usd), 0) as avg_value
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            JOIN produit p ON i.produit_id = p.id
+            JOIN destination d ON i.destination_id = d.id
+            {graph_clause}
+        """, graph_params)
+        stats = cursor.fetchone() or {
+            'total_invoices': 0,
+            'total_value': 0,
+            'avg_value': 0
+        }
 
+        # Top societe query
         cursor.execute(f"""
             SELECT 
-                societe,
-                COALESCE(SUM(total_usd), 0) as total_usd,
-                (COALESCE(SUM(total_usd), 0) / NULLIF((SELECT SUM(total_usd) FROM invoices {where_clause}), 0) * 100) as percentage
-            FROM invoices
-            {where_clause}
-            GROUP BY societe
+                s.nom as societe,
+                COALESCE(SUM(i.total_usd), 0) as total_usd,
+                (
+                    COALESCE(SUM(i.total_usd), 0) /
+                    NULLIF((
+                        SELECT SUM(sub_i.total_usd)
+                        FROM invoices sub_i
+                        JOIN societe sub_s ON sub_i.societe_id = sub_s.id
+                        JOIN produit sub_p ON sub_i.produit_id = sub_p.id
+                        JOIN destination sub_d ON sub_i.destination_id = sub_d.id
+                        {graph_clause.replace('s.', 'sub_s.').replace('p.', 'sub_p.').replace('d.', 'sub_d.')}
+                    ), 0) * 100
+                ) as percentage
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            JOIN produit p ON i.produit_id = p.id
+            JOIN destination d ON i.destination_id = d.id
+            {graph_clause}
+            GROUP BY i.societe_id, s.nom
             ORDER BY total_usd DESC
             LIMIT 1
-        """, params[:-2] + params[:-2])
+        """, graph_params)
         top_societe = cursor.fetchone()
         stats['top_societe_name'] = top_societe['societe'] if top_societe else 'N/A'
         stats['top_societe_percent'] = round(top_societe['percentage'], 1) if top_societe else 0
 
-        cursor.execute("""
-            SELECT 
-                DATE_FORMAT(invoice_date, '%Y-%m') as month,
-                COALESCE(SUM(total_usd), 0) as total
-            FROM invoices
-            GROUP BY month
-            ORDER BY month
-        """)
-        monthly_data = cursor.fetchall()
-
+        # Monthly data
         cursor.execute(f"""
             SELECT 
-                DATE_FORMAT(invoice_date, '%Y-%m') as month,
-                societe,
-                COALESCE(SUM(total_usd), 0) as total
-            FROM invoices
-            {where_clause}
-            GROUP BY month, societe
-        """, params[:-2])
+                DATE_FORMAT(i.invoice_date, '%Y-%m') as month,
+                COALESCE(SUM(i.total_usd), 0) as total
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            JOIN produit p ON i.produit_id = p.id
+            JOIN destination d ON i.destination_id = d.id
+            {graph_clause}
+            GROUP BY month
+            ORDER BY month
+        """, graph_params)
+        monthly_data = cursor.fetchall()
+
+        # Monthly societe data for Cramér's V
+        cursor.execute(f"""
+            SELECT 
+                DATE_FORMAT(i.invoice_date, '%Y-%m') as month,
+                s.nom as societe,
+                COALESCE(SUM(i.total_usd), 0) as total
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            {graph_clause}
+            GROUP BY month, i.societe_id
+        """, graph_params)
         monthly_societe_data = cursor.fetchall()
         cramers_v_monthly = None
         if monthly_societe_data and len(monthly_societe_data) > 1:
@@ -258,15 +303,17 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
             except ValueError:
                 cramers_v_monthly = None
 
+        # Product data
         cursor.execute(f"""
             SELECT 
-                COALESCE(produit, 'Inconnu') as produit,
-                COALESCE(SUM(quantite), 0) as total_quantite,
-                COALESCE(SUM(total_usd), 0) as total_usd
-            FROM invoices
-            {where_clause}
-            GROUP BY produit
-        """, params[:-2])
+                p.nom as produit,
+                COALESCE(SUM(i.quantite), 0) as total_quantite,
+                COALESCE(SUM(i.total_usd), 0) as total_usd
+            FROM invoices i
+            JOIN produit p ON i.produit_id = p.id
+            {graph_clause}
+            GROUP BY i.produit_id
+        """, graph_params)
         product_data_raw = cursor.fetchall()
         total_quantite = sum(row['total_quantite'] for row in product_data_raw) or 1
         product_data = [{
@@ -276,15 +323,17 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
             'percentage': round((row['total_quantite'] / total_quantite) * 100, 1)
         } for row in product_data_raw]
 
+        # Societe data
         cursor.execute(f"""
             SELECT 
-                COALESCE(societe, 'Inconnu') as societe,
-                COALESCE(SUM(quantite), 0) as total_quantite,
-                COALESCE(SUM(total_usd), 0) as total_usd
-            FROM invoices
-            {where_clause}
-            GROUP BY societe
-        """, params[:-2])
+                s.nom as societe,
+                COALESCE(SUM(i.quantite), 0) as total_quantite,
+                COALESCE(SUM(i.total_usd), 0) as total_usd
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            {graph_clause}
+            GROUP BY i.societe_id
+        """, graph_params)
         societe_data_raw = cursor.fetchall()
         total_quantite_all = sum(row['total_quantite'] for row in societe_data_raw) or 1
         societe_labels = [row['societe'] for row in societe_data_raw]
@@ -292,28 +341,28 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
             round((row['total_quantite'] / total_quantite_all) * 100, 1) for row in societe_data_raw
         ]
 
+        # Societe vs Destination data
         cursor.execute(f"""
             SELECT 
-                COALESCE(societe, 'Inconnu') as societe,
-                COALESCE(destination, 'Inconnu') as destination,
-                COALESCE(SUM(total_usd), 0) as total_usd
-            FROM invoices
-            {where_clause}
-            GROUP BY societe, destination
-        """, params[:-2])
+                s.nom as societe,
+                d.nom as destination,
+                COALESCE(SUM(i.total_usd), 0) as total_usd
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            JOIN destination d ON i.destination_id = d.id
+            {graph_clause}
+            GROUP BY i.societe_id, i.destination_id
+        """, graph_params)
         destination_data = cursor.fetchall()
         societe_destination_datasets = []
         cramers_v_societe_destination = None
-
         if destination_data:
             societe_totals = {}
             for row in destination_data:
                 societe = row['societe']
                 societe_totals[societe] = societe_totals.get(societe, 0) + row['total_usd']
-
             destinations = sorted(set(row['destination'] for row in destination_data))
             colors = ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b']
-
             for i, dest in enumerate(destinations):
                 dest_data = [row for row in destination_data if row['destination'] == dest]
                 percentages = []
@@ -322,7 +371,6 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                     total = societe_totals.get(societe, 1)
                     percentage = (matching['total_usd'] / total * 100) if matching else 0
                     percentages.append(round(percentage, 1))
-
                 societe_destination_datasets.append({
                     'label': dest,
                     'data': percentages,
@@ -330,7 +378,6 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                     'borderColor': colors[i % len(colors)],
                     'borderWidth': 1
                 })
-
             if len(destination_data) >= 2:
                 try:
                     df = pd.DataFrame(destination_data)
@@ -344,30 +391,30 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                 except ValueError:
                     cramers_v_societe_destination = None
 
+        # Produit vs Destination data
         cursor.execute(f"""
             SELECT 
-                COALESCE(produit, 'Inconnu') as produit,
-                COALESCE(destination, 'Inconnu') as destination,
-                COALESCE(SUM(total_usd), 0) as total_usd
-            FROM invoices
-            {where_clause}
-            GROUP BY produit, destination
-            HAVING SUM(total_usd) > 0
-        """, params[:-2])
+                p.nom as produit,
+                d.nom as destination,
+                COALESCE(SUM(i.total_usd), 0) as total_usd
+            FROM invoices i
+            JOIN produit p ON i.produit_id = p.id
+            JOIN destination d ON i.destination_id = d.id
+            {graph_clause}
+            GROUP BY i.produit_id, i.destination_id
+            HAVING SUM(i.total_usd) > 0
+        """, graph_params)
         produit_destination_data = cursor.fetchall()
         produit_destination_datasets = []
         cramers_v_produit_destination = None
         produits = sorted(set(row['produit'] for row in produit_destination_data))
-
         if produit_destination_data:
             produit_totals = {}
             for row in produit_destination_data:
                 produit = row['produit']
                 produit_totals[produit] = produit_totals.get(produit, 0) + row['total_usd']
-
             destinations = sorted(set(row['destination'] for row in produit_destination_data))
             colors = ['#4C78A8', '#F58518', '#E45756', '#72B7B2', '#6B4E31']
-
             for i, dest in enumerate(destinations):
                 dest_data = [row for row in produit_destination_data if row['destination'] == dest]
                 percentages = []
@@ -376,7 +423,6 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                     total = produit_totals.get(produit, 1)
                     percentage = (matching['total_usd'] / total * 100) if matching else 0
                     percentages.append(round(percentage, 1))
-
                 produit_destination_datasets.append({
                     'label': dest,
                     'data': percentages,
@@ -384,7 +430,6 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                     'borderColor': colors[i % len(colors)],
                     'borderWidth': 1
                 })
-
             if len(produit_destination_data) >= 2:
                 try:
                     df = pd.DataFrame(produit_destination_data)
@@ -398,19 +443,21 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                 except ValueError:
                     cramers_v_produit_destination = None
 
+        # Produit vs Societe data
         cursor.execute(f"""
             SELECT 
-                COALESCE(societe, 'Inconnu') as societe,
-                COALESCE(produit, 'Inconnu') as produit,
-                COALESCE(SUM(total_usd), 0) as total_usd
-            FROM invoices
-            {where_clause}
-            GROUP BY societe, produit
-        """, params[:-2])
+                s.nom as societe,
+                p.nom as produit,
+                COALESCE(SUM(i.total_usd), 0) as total_usd
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            JOIN produit p ON i.produit_id = p.id
+            {graph_clause}
+            GROUP BY i.societe_id, i.produit_id
+        """, graph_params)
         product_societe_data = cursor.fetchall()
         produit_societe_datasets = []
         cramers_v = None
-
         if product_societe_data and len(product_societe_data) >= 2:
             df_ps = pd.DataFrame(product_societe_data)
             produits_ps = sorted(df_ps['produit'].unique())
@@ -424,7 +471,6 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                     cramers_v = np.sqrt(phi2 / min((k - 1), (r - 1)))
             except ValueError:
                 cramers_v = None
-
             colors = ['#4C78A8', '#F58518', '#E45756', '#72B7B2']
             societe_totals = df_ps.groupby('societe')['total_usd'].sum().to_dict()
             for i, produit in enumerate(produits_ps):
@@ -443,39 +489,50 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                     'borderWidth': 1
                 })
 
+        # Total count (for pagination, using table filters)
+        cursor.execute(f"""
+            SELECT COUNT(*) as total_count
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            JOIN produit p ON i.produit_id = p.id
+            JOIN destination d ON i.destination_id = d.id
+            {where_clause}
+        """, params[:-2])
+        total_count = cursor.fetchone()['total_count']
+
+        return {
+            'invoices': invoices or [],
+            'stats': stats or {
+                'total_invoices': 0,
+                'total_value': 0,
+                'avg_value': 0,
+                'top_societe_name': 'N/A',
+                'top_societe_percent': 0
+            },
+            'monthly_data': monthly_data or [],
+            'product_data': product_data or [],
+            'societe_labels': societe_labels or [],
+            'societe_pourcentages': societe_pourcentages or [],
+            'societe_destination_datasets': societe_destination_datasets or [],
+            'produit_societe_datasets': produit_societe_datasets or [],
+            'produit_destination_datasets': produit_destination_datasets or [],
+            'produits': produits or [],
+            'cramers_v': cramers_v,
+            'cramers_v_monthly': cramers_v_monthly,
+            'cramers_v_societe_destination': cramers_v_societe_destination,
+            'cramers_v_produit_destination': cramers_v_produit_destination,
+            'available_months': available_months or [],
+            'selected_month': selected_month,
+            'search_query': search_query or '',
+            'total_count': total_count,
+            'offset': offset
+        }
+
     finally:
         if 'cursor' in locals():
             cursor.close()
         if 'conn' in locals():
             conn.close()
-
-    return {
-        'invoices': invoices or [],
-        'stats': stats or {
-            'total_invoices': 0,
-            'total_value': 0,
-            'avg_value': 0,
-            'top_societe_name': 'N/A',
-            'top_societe_percent': 0
-        },
-        'monthly_data': monthly_data or [],
-        'product_data': product_data or [],
-        'societe_labels': societe_labels or [],
-        'societe_pourcentages': societe_pourcentages or [],
-        'societe_destination_datasets': societe_destination_datasets or [],
-        'produit_societe_datasets': produit_societe_datasets or [],
-        'produit_destination_datasets': produit_destination_datasets or [],
-        'produits': produits or [],
-        'cramers_v': cramers_v,
-        'cramers_v_monthly': cramers_v_monthly,
-        'cramers_v_societe_destination': cramers_v_societe_destination,
-        'cramers_v_produit_destination': cramers_v_produit_destination,
-        'available_months': available_months or [],
-        'selected_month': selected_month,
-        'search_query': search_query or '',
-        'total_count': total_count,
-        'offset': offset
-    }
 
 def get_invoices_table(offset=0, limit=10, search_query=None, selected_month=None):
     conn = get_connection()
@@ -485,47 +542,45 @@ def get_invoices_table(offset=0, limit=10, search_query=None, selected_month=Non
         where_clause = " WHERE 1=1"
         params = []
         if selected_month:
-            where_clause += " AND DATE_FORMAT(invoice_date, '%Y-%m') = %s"
+            where_clause += " AND DATE_FORMAT(i.invoice_date, '%Y-%m') = %s"
             params.append(selected_month)
         if search_query and search_query.strip():
             search_query = f"%{search_query}%"
-            where_clause += " AND (ot_number LIKE %s OR societe LIKE %s OR produit LIKE %s OR invoice_date LIKE %s)"
-            params.extend([search_query, search_query, search_query, search_query])
+            where_clause += " AND (i.ot_number LIKE %s OR s.nom LIKE %s OR p.nom LIKE %s OR DATE_FORMAT(i.invoice_date, '%%Y-%%m-%%d') LIKE %s)"
+            params.extend([search_query] * 4)
 
         query = f"""
-            SELECT
-                ot_number,
-                DATE_FORMAT(invoice_date, '%Y-%m-%d') as invoice_date,
-                societe,
-                produit,
-                COALESCE(quantite, 0) as quantite,
-                COALESCE(total_usd, 0) as total_usd,
-                total_sans_fret
-            FROM invoices
+            SELECT 
+                i.ot_number,
+                DATE_FORMAT(i.invoice_date, '%Y-%m-%d') as invoice_date,
+                s.nom AS societe,
+                p.nom AS produit,
+                COALESCE(i.quantite, 0) AS quantite,
+                COALESCE(i.total_usd, 0) AS total_usd,
+                i.total_sans_fret
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            JOIN produit p ON i.produit_id = p.id
             {where_clause}
-            ORDER BY invoice_date DESC, id DESC
+            ORDER BY i.created_at DESC 
             LIMIT %s OFFSET %s
         """
         params.extend([limit, offset])
+        logger.debug(f"Executing table query: {query} with params {params}")
         cursor.execute(query, params)
         invoices = cursor.fetchall()
 
         cursor.execute(f"""
             SELECT COUNT(*) as total_count
-            FROM invoices
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            JOIN produit p ON i.produit_id = p.id
             {where_clause}
         """, params[:-2])
         total_count = cursor.fetchone()['total_count']
 
-        user_id = session.get('user_id', 'Unknown')
-        logger.info(f"User ID {user_id} fetched invoices table; offset={offset}, query='{search_query}', month='{selected_month}', retrieved={len(invoices)}")
         return render_template('invoices_table.html', invoices=invoices, offset=offset, total_count=total_count,
-                              search_query=search_query, selected_month=selected_month)
-    except mysql.connector.Error as err:
-        logger.error(f"Database error in get_invoices_table: {str(err)}")
-        flash(f'Erreur de base de données : {str(err)}', 'danger')
-        return render_template('invoices_table.html', invoices=[], offset=offset, total_count=0,
-                              search_query=search_query, selected_month=selected_month)
+                               search_query=search_query, selected_month=selected_month)
     finally:
         if 'cursor' in locals():
             cursor.close()
@@ -670,6 +725,9 @@ def dashboard():
 
 @app.route('/search_invoices', methods=['GET'])
 def search_invoices():
+    if not session.get('user_id'):
+        flash('Veuillez vous connecter pour chercher une facture', 'danger')
+        return redirect(url_for('login'))
     search_query = request.args.get('q', '')
     selected_month = request.args.get('month', '')
     offset = request.args.get('offset', type=int, default=0)
@@ -679,8 +737,11 @@ def search_invoices():
     logger.info(f"User ID {user_id} searched invoices with query: {search_query}, month: {selected_month}")
     return render_template('dashboard.html', **data, table_html=table_html)
 
-@app.route('/get_invoices_table', methods=['GET'])
+@app.route('/get_invoices_table', methods=['GET', 'POST'])
 def get_invoices_table_route():
+    if not session.get('user_id'):
+        flash('Veuillez vous connecter pour acceder au tableau des factures', 'danger')
+        return redirect(url_for('login'))
     try:
         offset = int(request.args.get('offset', 0))
         search_query = request.args.get('q', '').strip()
@@ -705,7 +766,7 @@ def upload():
             return redirect(url_for('upload'))
 
         file = request.files['file']
-        societe = request.form.get('societe', '').strip()
+        societe_nom = request.form.get('societe', '').strip()
 
         if file.filename == '':
             logger.warning(f"User {session.get('user_id')} attempted empty file upload")
@@ -714,10 +775,10 @@ def upload():
 
         if file and allowed_file(file.filename):
             try:
-                # 1. Extract OT number from filename (format: Prefix-OTNUM-Suffix.pdf)
+                # 1. Extract OT number from filename
                 filename = secure_filename(file.filename)
                 try:
-                    ot_number = filename.split('-')[1]  # Get part between first and second hyphen
+                    ot_number = filename.split('-')[1]
                     if not ot_number.isdigit():
                         raise ValueError("OT number must be numeric")
                 except (IndexError, ValueError) as e:
@@ -728,42 +789,88 @@ def upload():
                 # 2. Process file content
                 file_stream = BytesIO(file.read())
                 invoice_data = extract_invoice_data(file_stream)
-                file_stream.seek(0)  # Reset for potential re-reading
+                file_stream.close()
 
-                # 3. Combine data
-                invoice_data.update({
-                    'ot_number': ot_number,
-                    'societe': societe or invoice_data['societe'] or 'Inconnu'
-                })
+                # Log extracted data for debugging
+                logger.debug(f"Extracted invoice data for OT {ot_number}: {invoice_data}")
+
+                # 3. Map names to IDs or insert if not found
+                conn = get_connection()
+                cursor = conn.cursor(dictionary=True)  # Ensure dictionary cursor
+                societe_id = None
+                produit_id = None
+                destination_id = None
+
+                # Handle societe
+                societe_value = societe_nom if societe_nom else (invoice_data.get('societe') or '')
+                if societe_value:
+                    cursor.execute("SELECT id FROM societe WHERE nom = %s", (societe_value,))
+                    result = cursor.fetchone()
+                    if result:
+                        societe_id = result['id']
+                    else:
+                        cursor.execute("INSERT INTO societe (nom) VALUES (%s)", (societe_value,))
+                        societe_id = cursor.lastrowid
+
+                # Handle produit
+                produit_value = invoice_data.get('produit', '')
+                if produit_value:
+                    cursor.execute("SELECT id FROM produit WHERE nom = %s", (produit_value,))
+                    result = cursor.fetchone()
+                    if result:
+                        produit_id = result['id']
+                    else:
+                        cursor.execute("INSERT INTO produit (nom) VALUES (%s)", (produit_value,))
+                        produit_id = cursor.lastrowid
+
+                # Handle destination
+                destination_value = invoice_data.get('destination', '')
+                if destination_value:
+                    cursor.execute("SELECT id FROM destination WHERE nom = %s", (destination_value,))
+                    result = cursor.fetchone()
+                    if result:
+                        destination_id = result['id']
+                    else:
+                        cursor.execute("INSERT INTO destination (nom) VALUES (%s)", (destination_value,))
+                        destination_id = cursor.lastrowid
 
                 # 4. Validate required fields
-                required_fields = ['ot_number', 'societe', 'produit', 'quantite', 'total_usd']
-                if any(not invoice_data.get(field) for field in required_fields):
-                    missing = [f for f in required_fields if not invoice_data.get(f)]
-                    logger.error(f"Missing fields in invoice {ot_number}: {missing}")
-                    flash(f'Champs manquants: {", ".join(missing)}', 'danger')
+                required_fields = ['ot_number', 'societe_id', 'produit_id', 'destination_id']
+                missing_fields = [field for field in required_fields if not locals().get(field)]
+                if missing_fields:
+                    logger.error(f"Missing fields in invoice {ot_number}: {missing_fields}")
+                    flash(f'Champs manquants: {", ".join(missing_fields)}', 'danger')
                     return redirect(url_for('upload'))
 
-                # 5. Save to database
-                conn = get_connection()
-                cursor = conn.cursor()
+                # Use fallback values for quantite and total_usd if missing
+                quantite = invoice_data.get('quantite', 0)
+                total_usd = invoice_data.get('total_usd', 0)
+
+                if quantite <= 0 or total_usd <= 0:
+                    logger.warning(f"Invalid or missing values for OT {ot_number}: quantite={quantite}, total_usd={total_usd}")
+                    flash("Quantité ou montant total invalide ou manquant dans le fichier.", 'danger')
+                    return redirect(url_for('upload'))
+                user_id = session.get('user_id')
                 cursor.execute("""
                     INSERT INTO invoices (
-                        ot_number, invoice_date, destination, societe, produit,
+                        user_id,  -- add this
+                        ot_number, invoice_date, societe_id, produit_id, destination_id,
                         quantite, prix_unitaire, total_usd, fret, total_sans_fret
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)  -- add one more placeholder
                 """, (
-                    invoice_data['ot_number'],
-                    invoice_data['invoice_date'],
-                    invoice_data['destination'],
-                    invoice_data['societe'],
-                    invoice_data['produit'],
-                    invoice_data['quantite'],
-                    invoice_data['prix_unitaire'],
-                    invoice_data['total_usd'],
-                    invoice_data['fret'],
-                    invoice_data['total_sans_fret']
+                    user_id,
+                    ot_number,
+                    invoice_data.get('invoice_date'),
+                    societe_id,
+                    produit_id,
+                    destination_id,
+                    quantite,
+                    invoice_data.get('prix_unitaire', 0),
+                    total_usd,
+                    invoice_data.get('fret', 0),
+                    invoice_data.get('total_sans_fret', 0)
                 ))
+
                 conn.commit()
 
                 logger.info(f"Invoice {ot_number} uploaded by user {session.get('user_id')}")
@@ -789,8 +896,13 @@ def upload():
 
     return render_template('upload.html')
 
+
+
 @app.route('/telecharger_excel')
 def telecharger_excel():
+    if not session.get('user_id'):
+        flash('Veuillez vous connecter pour télécharger le fichier excel', 'danger')
+        return redirect(url_for('login'))
     selected_month = request.args.get('month', '')
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
@@ -798,22 +910,25 @@ def telecharger_excel():
     try:
         query = """
             SELECT
-                ot_number,
-                invoice_date,
-                destination,
-                societe,
-                produit,
-                quantite,
-                prix_unitaire,
-                total_usd,
-                fret,
-                total_sans_fret
-            FROM invoices
+                i.ot_number,
+                i.invoice_date,
+                s.nom as societe,
+                p.nom as produit,
+                d.nom as destination,
+                i.quantite,
+                i.prix_unitaire,
+                i.total_usd,
+                i.fret,
+                i.total_sans_fret
+            FROM invoices i
+            LEFT JOIN societe s ON i.societe_id = s.id
+            LEFT JOIN produit p ON i.produit_id = p.id
+            LEFT JOIN destination d ON i.destination_id = d.id
             WHERE 1=1
         """
         params = []
         if selected_month:
-            query += " AND DATE_FORMAT(invoice_date, '%Y-%m') = %s"
+            query += " AND DATE_FORMAT(i.invoice_date, '%Y-%m') = %s"
             params.append(selected_month)
 
         cursor.execute(query, params)
@@ -823,18 +938,17 @@ def telecharger_excel():
         ws = wb.active
         ws.title = "Factures"
         headers = [
-            'N° OT', 'Date de facture', 'Destination', 'Société',
-            'Produit', 'Quantité', 'Prix unitaire', 'Total USD',
-            'Fret', 'Total sans fret'
+            'N° OT', 'Date de facture', 'Société', 'Produit', 'Destination',
+            'Quantité', 'Prix unitaire', 'Total USD', 'Fret', 'Total sans fret'
         ]
         ws.append(headers)
         for invoice in invoices:
             ws.append([
                 invoice['ot_number'],
                 invoice['invoice_date'],
-                invoice['destination'],
                 invoice['societe'],
                 invoice['produit'],
+                invoice['destination'],
                 invoice['quantite'],
                 invoice['prix_unitaire'],
                 invoice['total_usd'],
@@ -996,15 +1110,15 @@ def user_management():
 
 @app.route('/delete_account/<int:user_id>', methods=['POST'])
 def delete_account(user_id):
-    current_user_id = session.get('user_id')
+    session_id = session.get('user_id')
     is_admin = session.get('is_admin', False)
 
     if not is_admin:
-        logger.warning(f"Non-admin user ID {current_user_id or 'Unknown'} attempted to delete user ID {user_id}")
+        logger.warning(f"Non-admin user ID {session_id or 'Unknown'} attempted to delete user ID {user_id}")
         flash('Accès refusé. Seuls les admins peuvent supprimer des comptes.', 'danger')
         return redirect(url_for('user_management'))
 
-    if user_id == current_user_id:
+    if user_id == session_id:
         logger.warning(f"Admin user ID {user_id} attempted to delete their own account")
         flash('Vous ne pouvez pas supprimer votre propre compte.', 'danger')
         return redirect(url_for('user_management'))
@@ -1026,7 +1140,7 @@ def delete_account(user_id):
             conn.rollback()
             return redirect(url_for('user_management'))
         if user['is_admin']:
-            logger.warning(f"Admin user ID {current_user_id} attempted to delete admin user ID {user_id}")
+            logger.warning(f"Admin user ID {session_id} attempted to delete admin user ID {user_id}")
             flash('Vous ne pouvez pas supprimer un compte administrateur.', 'danger')
             conn.rollback()
             return redirect(url_for('user_management'))
@@ -1091,6 +1205,238 @@ def delete_invoice(ot_number):
             cursor.close()
         if conn:
             conn.close()
+
+
+@app.route('/manuel_insertion', methods=['GET','POST'])
+def manuel_insertion():
+    # Check if user is logged in
+    if not session.get('user_id'):
+        flash('Veuillez vous connecter pour insérer une facture manuellement', 'danger')
+        return redirect(url_for('login'))
+
+    logger.info(f"User ID {session.get('user_id')} accessed /manuel_insertion")
+
+    # Fetch options from database
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT nom FROM destination ORDER BY nom")
+        destinations = [row['nom'] for row in cursor.fetchall()]
+
+        cursor.execute("SELECT nom FROM societe ORDER BY nom")
+        societes = [row['nom'] for row in cursor.fetchall()]
+
+        cursor.execute("SELECT nom FROM produit ORDER BY nom")
+        produits = [row['nom'] for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error fetching options in manuel_insertion for user {session.get('user_id')}: {str(e)}")
+        flash('Erreur lors de la récupération des options', 'danger')
+        return render_template('manuel_insertion.html')
+    finally:
+        cursor.close()
+        conn.close()
+
+    if request.method == 'POST':
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            # Extract and sanitize form data
+            ot_number = request.form.get('nombre', '').strip()
+            invoice_date = request.form.get('date', '').strip()
+            destination = request.form.get('destination', '').strip()
+            societe = request.form.get('societe', '').strip()
+            produit = request.form.get('produit', '').strip()
+            quantite = request.form.get('quantite', '').strip()
+            prix_unitaire = request.form.get('prix_unitaire', '').strip()
+            total_usd = request.form.get('total_usd', '').strip()
+            fret = request.form.get('fret', '').strip()
+
+            # Validate all required fields are present
+            if not all([ot_number, invoice_date, destination, societe, produit, quantite, prix_unitaire, total_usd]):
+                logger.warning(f"User {session.get('user_id')} submitted incomplete form")
+                flash('Tous les champs obligatoires doivent être remplis.', 'danger')
+                return render_template('manuel_insertion.html', destinations=destinations, societes=societes, produits=produits)
+
+            # Validate numeric fields
+            try:
+                quantite = float(quantite)
+                prix_unitaire = float(prix_unitaire)
+                total_usd = float(total_usd)
+                fret = float(fret) if fret else 0.0
+                if quantite <= 0 or prix_unitaire < 0 or total_usd < 0 or fret < 0:
+                    logger.warning(f"User {session.get('user_id')} submitted invalid numeric values: quantite={quantite}, prix_unitaire={prix_unitaire}, total_usd={total_usd}, fret={fret}")
+                    flash('Les valeurs numériques doivent être positives.', 'danger')
+                    return render_template('manuel_insertion.html', destinations=destinations, societes=societes, produits=produits)
+            except ValueError:
+                logger.warning(f"User {session.get('user_id')} submitted non-numeric values")
+                flash('Les champs quantité, prix unitaire, total USD et fret doivent être des nombres.', 'danger')
+                return render_template('manuel_insertion.html', destinations=destinations, societes=societes, produits=produits)
+
+            # Validate date format
+            try:
+                invoice_date = datetime.strptime(invoice_date, '%Y-%m-%d').date()
+            except ValueError:
+                logger.warning(f"User {session.get('user_id')} submitted invalid date format: {invoice_date}")
+                flash('La date doit être au format AAAA-MM-JJ.', 'danger')
+                return render_template('manuel_insertion.html', destinations=destinations, societes=societes, produits=produits)
+
+            # Calculate total_sans_fret
+            total_sans_fret = round(total_usd - (fret * quantite), 2) if fret else total_usd
+
+            # Check for duplicate OT number
+            cursor.execute('SELECT ot_number FROM invoices WHERE ot_number = %s', (ot_number,))
+            if cursor.fetchone():
+                logger.warning(f"User {session.get('user_id')} attempted to insert duplicate OT {ot_number}")
+                flash(f"L'ordre de transfert n° {ot_number} existe déjà.", 'danger')
+                return render_template('manuel_insertion.html', destinations=destinations, societes=societes, produits=produits)
+
+            # Map names to IDs or insert if not found
+            cursor.execute('SELECT id FROM societe WHERE nom = %s', (societe,))
+            result = cursor.fetchone()
+            societe_id = result['id'] if result else None
+            if not societe_id:
+                cursor.execute('INSERT INTO societe (nom) VALUES (%s)', (societe,))
+                societe_id = cursor.lastrowid
+
+            cursor.execute('SELECT id FROM produit WHERE nom = %s', (produit,))
+            result = cursor.fetchone()
+            produit_id = result['id'] if result else None
+            if not produit_id:
+                cursor.execute('INSERT INTO produit (nom) VALUES (%s)', (produit,))
+                produit_id = cursor.lastrowid
+
+            cursor.execute('SELECT id FROM destination WHERE nom = %s', (destination,))
+            result = cursor.fetchone()
+            destination_id = result['id'] if result else None
+            if not destination_id:
+                cursor.execute('INSERT INTO destination (nom) VALUES (%s)', (destination,))
+                destination_id = cursor.lastrowid
+
+            # Validate required IDs
+            if not all([societe_id, produit_id, destination_id]):
+                missing = [field for field, value in [('societe_id', societe_id), ('produit_id', produit_id), ('destination_id', destination_id)] if not value]
+                logger.error(f"Missing IDs for invoice {ot_number} by user {session.get('user_id')}: {missing}")
+                flash(f'Champs manquants: {", ".join(missing)}', 'danger')
+                return render_template('manuel_insertion.html', destinations=destinations, societes=societes, produits=produits)
+
+            user_id = session.get('user_id')  # Récupère l'ID de l'utilisateur connecté
+
+            query = """
+                INSERT INTO invoices (
+                    ot_number, invoice_date, societe_id, produit_id, destination_id,
+                    quantite, prix_unitaire, total_usd, fret, total_sans_fret, user_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            values = (
+                ot_number, invoice_date, societe_id, produit_id, destination_id,
+                quantite, prix_unitaire, total_usd, fret, total_sans_fret, user_id
+            )
+
+            cursor.execute(query, values)
+            conn.commit()
+            logger.info(f"User {session.get('user_id')} manually inserted invoice {ot_number}")
+            flash('Facture insérée avec succès !', 'success')
+            return redirect(url_for('dashboard'))
+
+        except mysql.connector.Error as err:
+            if err.errno == 1062:
+                flash(f"L'ordre de transfert n° {ot_number} existe déjà.", 'danger')
+                logger.warning(f"Duplicate invoice OT number {ot_number} by user {session.get('user_id')}")
+            else:
+                logger.error(f"Database error in manuel_insertion for user {session.get('user_id')}: {str(err)}")
+                flash('Erreur de base de données', 'danger')
+            return render_template('manuel_insertion.html', destinations=destinations, societes=societes, produits=produits)
+        except Exception as e:
+            logger.error(f"Unexpected error in manuel_insertion for user {session.get('user_id')}: {str(e)}")
+            flash('Erreur inattendue', 'danger')
+            return render_template('manuel_insertion.html', destinations=destinations, societes=societes, produits=produits)
+        finally:
+            cursor.close()
+            conn.close()
+
+    return render_template('manuel_insertion.html', destinations=destinations, societes=societes, produits=produits)
+
+@app.route('/edit_entities', methods=['GET', 'POST'])
+def edit_entities():
+    if not session.get('user_id'):
+        flash('Veuillez vous connecter pour accéder à cette page', 'danger')
+        return redirect(url_for('login'))
+    if not session.get('is_admin'):
+        flash('Accès refusé. Cette page est réservée aux administrateurs.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    logger.info(f"Admin User ID {session.get('user_id')} accessed /edit_entities")
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Read all entities
+        cursor.execute("SELECT id, nom FROM societe ORDER BY nom")
+        societes = cursor.fetchall()
+
+        cursor.execute("SELECT id, nom FROM produit ORDER BY nom")
+        produits = cursor.fetchall()
+
+        cursor.execute("SELECT id, nom FROM destination ORDER BY nom")
+        destinations = cursor.fetchall()
+
+        if request.method == 'POST':
+            action = request.form.get('action')
+            entity_type = request.form.get('entity_type')
+            entity_id = request.form.get('id', '').strip()
+            entity_nom = request.form.get('nom', '').strip()
+
+            if action == 'create':
+                if not entity_nom:
+                    flash('Le nom ne peut pas être vide.', 'danger')
+                else:
+                    table = {'societe': 'societe', 'produit': 'produit', 'destination': 'destination'}.get(entity_type)
+                    if table:
+                        cursor.execute(f"INSERT INTO {table} (nom) VALUES (%s)", (entity_nom,))
+                        conn.commit()
+                        logger.info(f"Admin {session.get('user_id')} created {entity_type} with name {entity_nom}")
+                        flash(f'{entity_type.capitalize()} créé avec succès !', 'success')
+                    else:
+                        flash('Type d\'entité invalide.', 'danger')
+
+            elif action == 'update':
+                if not entity_id or not entity_nom:
+                    flash('L\'ID et le nom sont requis pour la mise à jour.', 'danger')
+                else:
+                    table = {'societe': 'societe', 'produit': 'produit', 'destination': 'destination'}.get(entity_type)
+                    if table:
+                        cursor.execute(f"UPDATE {table} SET nom = %s WHERE id = %s", (entity_nom, entity_id))
+                        conn.commit()
+                        logger.info(f"Admin {session.get('user_id')} updated {entity_type} ID {entity_id} to {entity_nom}")
+                        flash(f'{entity_type.capitalize()} mis à jour avec succès !', 'success')
+                    else:
+                        flash('Type d\'entité invalide.', 'danger')
+
+            elif action == 'delete':
+                if not entity_id:
+                    flash('L\'ID est requis pour la suppression.', 'danger')
+                else:
+                    table = {'societe': 'societe', 'produit': 'produit', 'destination': 'destination'}.get(entity_type)
+                    if table:
+                        cursor.execute(f"DELETE FROM {table} WHERE id = %s", (entity_id,))
+                        conn.commit()
+                        logger.info(f"Admin {session.get('user_id')} deleted {entity_type} ID {entity_id}")
+                        flash(f'{entity_type.capitalize()} supprimé avec succès !', 'success')
+                    else:
+                        flash('Type d\'entité invalide.', 'danger')
+
+            return redirect(url_for('edit_entities'))
+
+        return render_template('edit_entities.html', societes=societes, produits=produits, destinations=destinations)
+
+    except mysql.connector.Error as err:
+        logger.error(f"Database error in edit_entities for user {session.get('user_id')}: {str(err)}")
+        flash('Erreur de base de données', 'danger')
+        return render_template('edit_entities.html', societes=[], produits=[], destinations=[])
+    finally:
+        cursor.close()
+        conn.close()
+
 
 @app.route('/logout')
 def logout():

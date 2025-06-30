@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% block title %}Insertion Manuelle{% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <h2 class="mb-4">Insertion Manuelle de Facture</h2>
+
+
+    <!-- Form -->
+    <form method="POST" class="needs-validation" novalidate>
+        <div class="mb-3">
+            <label for="nombre" class="form-label">Numéro de Facture</label>
+            <input type="text" class="form-control" id="nombre" name="nombre" placeholder="Entrez le numéro de facture" required>
+            <div class="invalid-feedback">Veuillez entrer un numéro de facture.</div>
+        </div>
+        <div class="mb-3">
+            <label for="date" class="form-label">Date de Facture</label>
+            <input type="date" class="form-control" id="date" name="date" required>
+            <div class="invalid-feedback">Veuillez sélectionner une date valide (AAAA-MM-JJ).</div>
+        </div>
+        <div class="mb-3">
+            <label for="destination" class="form-label">Destination</label>
+            <select class="form-select" id="destination" name="destination" required>
+                <option value="" disabled selected>Choisissez une destination</option>
+                {% for dest in destinations %}
+                    <option value="{{ dest }}">{{ dest }}</option>
+                {% endfor %}
+            </select>
+            <div class="invalid-feedback">Veuillez sélectionner une destination.</div>
+        </div>
+        <div class="mb-3">
+            <label for="societe" class="form-label">Société</label>
+            <select class="form-select" id="societe" name="societe" required>
+                <option value="" disabled selected>Choisissez une société</option>
+                {% for soc in societes %}
+                    <option value="{{ soc }}">{{ soc }}</option>
+                {% endfor %}
+            </select>
+            <div class="invalid-feedback">Veuillez sélectionner une société.</div>
+        </div>
+        <div class="mb-3">
+            <label for="produit" class="form-label">Produit</label>
+            <select class="form-select" id="produit" name="produit" required>
+                <option value="">Sélectionnez un produit</option>
+                {% for prod in produits %}
+                    <option value="{{ prod }}">{{ prod }}</option>
+                {% endfor %}
+            </select>
+            <div class="invalid-feedback">Veuillez sélectionner un produit.</div>
+        </div>
+        <div class="mb-3">
+            <label for="quantite" class="form-label">Quantité (Tonnes Métriques)</label>
+            <input type="number" class="form-control" id="quantite" name="quantite" placeholder="Entrez la quantité" step="0.01" min="0" required>
+            <div class="invalid-feedback">Veuillez entrer une quantité valide.</div>
+        </div>
+        <div class="mb-3">
+            <label for="prix_unitaire" class="form-label">Prix Unitaire (USD)</label>
+            <input type="number" class="form-control" id="prix_unitaire" name="prix_unitaire" placeholder="Entrez le prix unitaire" step="0.01" min="0" required>
+            <div class="invalid-feedback">Veuillez entrer un prix unitaire valide.</div>
+        </div>
+        <div class="mb-3">
+            <label for="total_usd" class="form-label">Montant Total (USD)</label>
+            <input type="number" class="form-control" id="total_usd" name="total_usd" placeholder="Entrez le montant en USD" step="0.01" min="0" required>
+            <div class="invalid-feedback">Veuillez entrer un montant valide.</div>
+        </div>
+        <div class="mb-3">
+            <label for="fret" class="form-label">Fret (USD/Tonne Métrique)</label>
+            <input type="number" class="form-control" id="fret" name="fret" placeholder="Entrez le fret" step="0.01" min="0">
+            <div class="invalid-feedback">Veuillez entrer un fret valide.</div>
+        </div>
+        <button type="submit" class="btn btn-primary">Insérer Facture</button>
+    </form>
+</div>
+
+<!-- Bootstrap validation script -->
+<script>
+    (function () {
+        'use strict';
+        const forms = document.querySelectorAll('.needs-validation');
+        Array.from(forms).forEach(form => {
+            form.addEventListener('submit', event => {
+                if (!form.checkValidity()) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                form.classList.add('was-validated');
+            }, false);
+        });
+    })();
+</script>
+{% endblock %}
