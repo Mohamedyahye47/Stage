@@ -61,10 +61,7 @@ html
                             </td>
                             {% endif %}
                         </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="{% if session.get('is_admin') %}5{% else %}4{% endif %}" class="text-center text-muted">Aucun utilisateur à afficher.</td>
-                        </tr>
+
                         {% endfor %}
                     </tbody>
                 </table>

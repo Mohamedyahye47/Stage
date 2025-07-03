@@ -1,16 +1,6 @@
 <!-- Sidebar -->
 <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
 
-    <!-- Custom CSS to remove left spacing -->
-    <style>
-        #accordionSidebar .nav-item {
-            padding-left: 0 !important;
-            margin-left: 0 !important;
-        }
-        #accordionSidebar .nav-link {
-            padding-left: 1rem !important; /* optionnel : pour alignement propre des icônes */
-        }
-    </style>
 
     <!-- Sidebar - Brand -->
     <a class="sidebar-brand d-flex align-items-center justify-content-center" href="{{ url_for('dashboard') }}">
@@ -21,8 +11,8 @@
     <hr class="sidebar-divider my-0">
 
     <!-- Nav Item - Dashboard -->
-    <li class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
-        <a class="nav-link w-100" href="{{ url_for('dashboard') }}">
+    <li class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}" style="left: 0px;">
+        <a class="nav-link w-100 " href="{{ url_for('dashboard') }}">
             <i class="fas fa-fw fa-tachometer-alt"></i>
             <span>Tableau de Bord</span>
         </a>

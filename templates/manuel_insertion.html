@@ -1,81 +1,148 @@
 {% extends 'base.html' %}
 {% block title %}Insertion Manuelle{% endblock %}
 {% block content %}
-<div class="container mt-5">
-    <h2 class="mb-4">Insertion Manuelle de Facture</h2>
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">Insertion Manuelle de Facture</h1>
+
+    <!-- Form Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">
+                <i class="fas fa-file-invoice-dollar fa-sm mr-1"></i>Nouvelle Facture
+            </h6>
+        </div>
+        <div class="card-body">
+            <form method="POST" class="needs-validation" novalidate>
+                <div class="form-row">
+                    <div class="form-group col-md-6">
+                        <label for="nombre" class="font-weight-bold">
+                            <i class="fas fa-hashtag fa-sm mr-1"></i>Numéro de Facture
+                        </label>
+                        <input type="text" class="form-control" id="nombre" name="nombre"
+                               placeholder="Entrez le numéro de facture" required>
+                        <div class="invalid-feedback">Veuillez entrer un numéro de facture.</div>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="date" class="font-weight-bold">
+                            <i class="fas fa-calendar-alt fa-sm mr-1"></i>Date de Facture
+                        </label>
+                        <input type="date" class="form-control" id="date" name="date" required>
+                        <div class="invalid-feedback">Veuillez sélectionner une date valide.</div>
+                    </div>
+                </div>
+
+                <div class="form-row mt-3">
+                    <div class="form-group col-md-4">
+                        <label for="destination" class="font-weight-bold">
+                            <i class="fas fa-map-marker-alt fa-sm mr-1"></i>Destination
+                        </label>
+                        <select class="form-control" id="destination" name="destination" required>
+                            <option value="" disabled selected>Choisissez une destination</option>
+                            {% for dest in destinations %}
+                                <option value="{{ dest }}">{{ dest }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="invalid-feedback">Veuillez sélectionner une destination.</div>
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label for="societe" class="font-weight-bold">
+                            <i class="fas fa-building fa-sm mr-1"></i>Société
+                        </label>
+                        <select class="form-control" id="societe" name="societe" required>
+                            <option value="" disabled selected>Choisissez une société</option>
+                            {% for soc in societes %}
+                                <option value="{{ soc }}">{{ soc }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="invalid-feedback">Veuillez sélectionner une société.</div>
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label for="produit" class="font-weight-bold">
+                            <i class="fas fa-box-open fa-sm mr-1"></i>Produit
+                        </label>
+                        <select class="form-control" id="produit" name="produit" required>
+                            <option value="" disabled selected>Sélectionnez un produit</option>
+                            {% for prod in produits %}
+                                <option value="{{ prod }}">{{ prod }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="invalid-feedback">Veuillez sélectionner un produit.</div>
+                    </div>
+                </div>
+
+                <div class="form-row mt-3">
+                    <div class="form-group col-md-3">
+                        <label for="quantite" class="font-weight-bold">
+                            <i class="fas fa-weight fa-sm mr-1"></i>Quantité (TM)
+                        </label>
+                        <input type="number" class="form-control" id="quantite" name="quantite"
+                               placeholder="Quantité en tonnes" step="0.01" min="0" required>
+                        <div class="invalid-feedback">Veuillez entrer une quantité valide.</div>
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label for="prix_unitaire" class="font-weight-bold">
+                            <i class="fas fa-dollar-sign fa-sm mr-1"></i>Prix Unitaire (USD)
+                        </label>
+                        <input type="number" class="form-control" id="prix_unitaire" name="prix_unitaire"
+                               placeholder="Prix par tonne" step="0.01" min="0" required>
+                        <div class="invalid-feedback">Veuillez entrer un prix valide.</div>
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label for="total_usd" class="font-weight-bold">
+                            <i class="fas fa-calculator fa-sm mr-1"></i>Total (USD)
+                        </label>
+                        <input type="number" class="form-control" id="total_usd" name="total_usd"
+                               placeholder="Montant total" step="0.01" min="0" required>
+                        <div class="invalid-feedback">Veuillez entrer un montant valide.</div>
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label for="fret" class="font-weight-bold">
+                            <i class="fas fa-ship fa-sm mr-1"></i>Fret (USD/TM)
+                        </label>
+                        <input type="number" class="form-control" id="fret" name="fret"
+                               placeholder="Coût du fret" step="0.01" min="0">
+                        <div class="invalid-feedback">Veuillez entrer un fret valide.</div>
+                    </div>
+                </div>
+
+                <div class="text-center mt-4">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-save fa-sm mr-1"></i>Enregistrer la Facture
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 
 
-    <!-- Form -->
-    <form method="POST" class="needs-validation" novalidate>
-        <div class="mb-3">
-            <label for="nombre" class="form-label">Numéro de Facture</label>
-            <input type="text" class="form-control" id="nombre" name="nombre" placeholder="Entrez le numéro de facture" required>
-            <div class="invalid-feedback">Veuillez entrer un numéro de facture.</div>
-        </div>
-        <div class="mb-3">
-            <label for="date" class="form-label">Date de Facture</label>
-            <input type="date" class="form-control" id="date" name="date" required>
-            <div class="invalid-feedback">Veuillez sélectionner une date valide (AAAA-MM-JJ).</div>
-        </div>
-        <div class="mb-3">
-            <label for="destination" class="form-label">Destination</label>
-            <select class="form-select" id="destination" name="destination" required>
-                <option value="" disabled selected>Choisissez une destination</option>
-                {% for dest in destinations %}
-                    <option value="{{ dest }}">{{ dest }}</option>
-                {% endfor %}
-            </select>
-            <div class="invalid-feedback">Veuillez sélectionner une destination.</div>
-        </div>
-        <div class="mb-3">
-            <label for="societe" class="form-label">Société</label>
-            <select class="form-select" id="societe" name="societe" required>
-                <option value="" disabled selected>Choisissez une société</option>
-                {% for soc in societes %}
-                    <option value="{{ soc }}">{{ soc }}</option>
-                {% endfor %}
-            </select>
-            <div class="invalid-feedback">Veuillez sélectionner une société.</div>
-        </div>
-        <div class="mb-3">
-            <label for="produit" class="form-label">Produit</label>
-            <select class="form-select" id="produit" name="produit" required>
-                <option value="">Sélectionnez un produit</option>
-                {% for prod in produits %}
-                    <option value="{{ prod }}">{{ prod }}</option>
-                {% endfor %}
-            </select>
-            <div class="invalid-feedback">Veuillez sélectionner un produit.</div>
-        </div>
-        <div class="mb-3">
-            <label for="quantite" class="form-label">Quantité (Tonnes Métriques)</label>
-            <input type="number" class="form-control" id="quantite" name="quantite" placeholder="Entrez la quantité" step="0.01" min="0" required>
-            <div class="invalid-feedback">Veuillez entrer une quantité valide.</div>
-        </div>
-        <div class="mb-3">
-            <label for="prix_unitaire" class="form-label">Prix Unitaire (USD)</label>
-            <input type="number" class="form-control" id="prix_unitaire" name="prix_unitaire" placeholder="Entrez le prix unitaire" step="0.01" min="0" required>
-            <div class="invalid-feedback">Veuillez entrer un prix unitaire valide.</div>
-        </div>
-        <div class="mb-3">
-            <label for="total_usd" class="form-label">Montant Total (USD)</label>
-            <input type="number" class="form-control" id="total_usd" name="total_usd" placeholder="Entrez le montant en USD" step="0.01" min="0" required>
-            <div class="invalid-feedback">Veuillez entrer un montant valide.</div>
-        </div>
-        <div class="mb-3">
-            <label for="fret" class="form-label">Fret (USD/Tonne Métrique)</label>
-            <input type="number" class="form-control" id="fret" name="fret" placeholder="Entrez le fret" step="0.01" min="0">
-            <div class="invalid-feedback">Veuillez entrer un fret valide.</div>
-        </div>
-        <button type="submit" class="btn btn-primary">Insérer Facture</button>
-    </form>
-</div>
 
-<!-- Bootstrap validation script -->
+        </div>
+
+
+
+<!-- Form Validation Script -->
 <script>
     (function () {
         'use strict';
         const forms = document.querySelectorAll('.needs-validation');
+
+        // Calculate total when quantity or unit price changes
+        const qtyInput = document.getElementById('quantite');
+        const unitPriceInput = document.getElementById('prix_unitaire');
+        const totalInput = document.getElementById('total_usd');
+
+        if (qtyInput && unitPriceInput && totalInput) {
+            const calculateTotal = () => {
+                const qty = parseFloat(qtyInput.value) || 0;
+                const unitPrice = parseFloat(unitPriceInput.value) || 0;
+                totalInput.value = (qty * unitPrice).toFixed(2);
+            };
+
+            qtyInput.addEventListener('input', calculateTotal);
+            unitPriceInput.addEventListener('input', calculateTotal);
+        }
+
+        // Form validation
         Array.from(forms).forEach(form => {
             form.addEventListener('submit', event => {
                 if (!form.checkValidity()) {

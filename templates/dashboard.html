@@ -304,15 +304,15 @@
             <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap" style="background-color: #f8f9fc; border-bottom: 1px solid #e3e6f0;">
                 <h6 class="m-0 font-weight-bold text-primary">10 Dernières Factures</h6>
                     <form id="search-form" class="form-inline" action="{{ url_for('search_invoices') }}" method="GET">
-                    <div class="input-group">
-                        <input type="text" name="q" class="form-control small border border-0 bg-white" style="background-color: #ffffff;" placeholder="Rechercher..." aria-label="Search">
-                        <div class="input-group-append">
-                            <button class="btn btn-primary px-3" type="submit" style="height: 38px;">
-                                <i class="fas fa-search fa-sm"></i>
-                            </button>
+                        <div class="input-group">
+                            <input type="text" name="q" class="form-control small border border-0 bg-white" style="background-color: #ffffff;" placeholder="Rechercher..." aria-label="Search">
+                            <div class="input-group-append">
+                                <button class="btn btn-primary px-3" type="submit" style="height: 38px;">
+                                    <i class="fas fa-search fa-sm"></i>
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                </form>
+                    </form>
             </div>
 
             <!-- Card Body with Table -->

@@ -1,95 +1,174 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta name="description" content="Créer un compte">
-    <meta name="author" content="">
+{% extends 'base.html' %}
 
-    <title>Créer un Compte - Factures Pétrolières</title>
+{% block title %}Créer un Compte{% endblock %}
 
-    <!-- CSS principal -->
-    <link href="{{ url_for('static', filename='sb-admin-2.min.css') }}" rel="stylesheet">
-</head>
-<body class="bg-gradient-primary">
+{% block content %}
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-xl-6 col-lg-8 col-md-10">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-user-plus fa-sm mr-1"></i>Création de compte
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <!-- Flash Messages -->
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }} alert-dismissible mb-4">
+                                    {{ message }}
+                                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                        <span aria-hidden="true">&times;</span>
+                                    </button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
 
-    <div class="container">
-        <div class="card o-hidden border-0 shadow-lg my-5">
-            <div class="card-body p-0">
-                <div class="row">
-                    <div class="col-lg-5 d-none d-lg-block bg-register-image"></div>
-                    <div class="col-lg-7">
-                        <div class="p-5">
-                            <div class="text-center">
-                                <h1 class="h4 text-gray-900 mb-4">Créer un compte !</h1>
+                    <form method="POST" action="{{ url_for('register') }}" class="needs-validation" novalidate>
+                        <div class="form-group">
+                            <label for="username" class="font-weight-bold">
+                                <i class="fas fa-user fa-sm mr-1"></i>Nom d'utilisateur
+                            </label>
+                            <input type="text" class="form-control" id="username" name="username"
+                                   placeholder="Entrez votre nom d'utilisateur" required>
+                            <div class="invalid-feedback">
+                                Veuillez entrer un nom d'utilisateur valide.
                             </div>
-
-                            <!-- Affichage des messages flash -->
-                            {% with messages = get_flashed_messages(with_categories=true) %}
-                                {% if messages %}
-                                    {% for category, message in messages %}
-                                        <div class="alert alert-{{ category }} mb-3">
-                                            {{ message }}
-                                        </div>
-                                    {% endfor %}
-                                {% endif %}
-                            {% endwith %}
-
-                            <!-- Formulaire -->
-                            <form class="user" method="POST" action="{{ url_for('register') }}">
-                                <div class="form-group">
-                                    <input type="text" class="form-control form-control-user" name="username" placeholder="Nom d'utilisateur" required>
-                                </div>
-                                <div class="form-group">
-                                    <input type="email" class="form-control form-control-user" name="email" placeholder="Adresse e-mail" required>
-                                </div>
-                                <div class="form-group row">
-                                    <div class="col-sm-6 mb-3 mb-sm-0">
-                                        <input type="password" class="form-control form-control-user" name="password" placeholder="Mot de passe" required>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <input type="password" class="form-control form-control-user" name="confirm_password" placeholder="Confirmer le mot de passe" required>
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                <label>Rôle :</label>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="role" id="userRole" value="user" checked>
-                                    <label class="form-check-label" for="userRole">
-                                        Utilisateur
-                                    </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="role" id="adminRole" value="admin">
-                                    <label class="form-check-label" for="adminRole">
-                                        Administrateur
-                                    </label>
-                                </div>
-                                </div>
-
-
-                                <button type="submit" class="btn btn-primary btn-user btn-block">
-                                    S'inscrire
-                                </button>
-
-                                <a href="{{ url_for('profile') }}" class="btn btn-danger btn-user btn-block">
-                                    <i class="fas fa-arrow-left fa-sm"></i> Annuler l'inscription
-                                </a>
-                            </form>
-
-                            <hr>
-
                         </div>
-                    </div>
+
+                        <div class="form-group">
+                            <label for="email" class="font-weight-bold">
+                                <i class="fas fa-envelope fa-sm mr-1"></i>Adresse e-mail
+                            </label>
+                            <input type="email" class="form-control" id="email" name="email"
+                                   placeholder="Entrez votre adresse e-mail" required>
+                            <div class="invalid-feedback">
+                                Veuillez entrer une adresse e-mail valide.
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label for="password" class="font-weight-bold">
+                                    <i class="fas fa-lock fa-sm mr-1"></i>Mot de passe
+                                </label>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="password" name="password"
+                                           placeholder="Créez un mot de passe" required>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-outline-secondary toggle-password" type="button" style="height: 86%">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="invalid-feedback">
+                                    Veuillez entrer un mot de passe.
+                                </div>
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label for="confirm_password" class="font-weight-bold">
+                                    <i class="fas fa-lock fa-sm mr-1"></i>Confirmation
+                                </label>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="confirm_password" name="confirm_password"
+                                           placeholder="Confirmez le mot de passe" required>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-outline-secondary toggle-password" type="button" style="height: 86%">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="invalid-feedback">
+                                    Les mots de passe doivent correspondre.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="font-weight-bold">
+                                <i class="fas fa-user-tag fa-sm mr-1"></i>Rôle
+                            </label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="role"
+                                       id="userRole" value="user" checked>
+                                <label class="form-check-label" for="userRole">
+                                    Utilisateur
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="role"
+                                       id="adminRole" value="admin">
+                                <label class="form-check-label" for="adminRole">
+                                    Administrateur
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('user_management') }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left fa-sm mr-1"></i> Retour
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-user-plus fa-sm mr-1"></i> Créer le compte
+                            </button>
+                        </div>
+                    </form>
+
+
+
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- JS requis -->
-    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+<script>
+// Toggle password visibility
+document.querySelectorAll('.toggle-password').forEach(button => {
+    button.addEventListener('click', function() {
+        const input = this.closest('.input-group').querySelector('input');
+        const icon = this.querySelector('i');
+
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        } else {
+            input.type = 'password';
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+        }
+    });
+});
+
+// Form validation
+(function() {
+    'use strict';
+    window.addEventListener('load', function() {
+        var forms = document.getElementsByClassName('needs-validation');
+        Array.prototype.filter.call(forms, function(form) {
+            form.addEventListener('submit', function(event) {
+                // Check password match
+                const password = document.getElementById('password');
+                const confirmPassword = document.getElementById('confirm_password');
+                
+                if (password.value !== confirmPassword.value) {
+                    confirmPassword.setCustomValidity("Les mots de passe ne correspondent pas");
+                } else {
+                    confirmPassword.setCustomValidity('');
+                }
+
+                if (form.checkValidity() === false) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                form.classList.add('was-validated');
+            }, false);
+        });
+    }, false);
+})();
+</script>
+{% endblock %}

@@ -1,66 +1,318 @@
 {% extends "base.html" %}
+{% block title %}Gestion des Entités{% endblock %}
 {% block content %}
-<div class="container mt-4">
-    <h2>Gestion des Entités</h2>
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">Gestion des Entités</h1>
 
-
-
-    <!-- Create Form -->
-    <h3>Ajouter une nouvelle entité</h3>
-    <form method="POST" action="{{ url_for('edit_entities') }}">
-        <input type="hidden" name="action" value="create">
-        <div class="form-group">
-            <label for="entity_type">Type d'entité</label>
-            <select id="entity_type" name="entity_type" class="form-control" required>
-                <option value="societe">Société</option>
-                <option value="produit">Produit</option>
-                <option value="destination">Destination</option>
-            </select>
+    <!-- Create Entity Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">
+                <i class="fas fa-plus-circle fa-sm mr-1"></i>Ajouter une nouvelle entité
+            </h6>
+            <span class="badge badge-primary badge-pill">Nouveau</span>
         </div>
-        <div class="form-group">
-            <label for="nom">Nom</label>
-            <input id="nom" type="text" name="nom" class="form-control" required>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('edit_entities') }}" class="needs-validation" novalidate>
+                <input type="hidden" name="action" value="create">
+                <div class="form-row">
+                    <div class="form-group col-md-6">
+                        <label for="entity_type" class="font-weight-bold">
+                            <i class="fas fa-list fa-sm mr-1"></i>Type d'entité
+                        </label>
+                        <select id="entity_type" name="entity_type" class="form-control custom-select" required>
+                            <option value="">Sélectionner un type...</option>
+                            <option value="societe">Société</option>
+                            <option value="produit">Produit</option>
+                            <option value="destination">Destination</option>
+                        </select>
+                        <div class="invalid-feedback">
+                            Veuillez sélectionner un type d'entité.
+                        </div>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="nom" class="font-weight-bold">
+                            <i class="fas fa-tag fa-sm mr-1"></i>Nom
+                        </label>
+                        <input id="nom" type="text" name="nom" class="form-control"
+                               placeholder="Entrez le nom de l'entité..." required>
+                        <div class="invalid-feedback">
+                            Veuillez saisir un nom valide.
+                        </div>
+                    </div>
+                </div>
+                <div class="text-center mt-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save fa-sm mr-1"></i>Créer
+                    </button>
+                </div>
+            </form>
         </div>
-        <button type="submit" class="btn btn-primary">Créer</button>
-    </form>
+    </div>
 
-    <!-- Update/Delete Forms -->
+    <!-- Entities Tables -->
     {% for entity_type, entities in [('societes', societes), ('produits', produits), ('destinations', destinations)] %}
-        <h3>{{ entity_type[:-1]|capitalize }}s</h3>
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Nom</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for entity in entities %}
-                    <tr>
-                        <td>{{ entity.id }}</td>
-                        <td>{{ entity.nom }}</td>
-                        <td>
-                            <!-- Update Form -->
-                            <form method="POST" action="{{ url_for('edit_entities') }}" style="display:inline;">
-                                <input type="hidden" name="action" value="update">
-                                <input type="hidden" name="entity_type" value="{{ entity_type[:-1] }}">
-                                <input type="hidden" name="id" value="{{ entity.id }}">
-                                <input id="update_nom_{{ entity.id }}" type="text" name="nom" value="{{ entity.nom }}" class="form-control d-inline-block w-50">
-                                <button type="submit" class="btn btn-warning btn-sm">Mettre à jour</button>
-                            </form>
-                            <!-- Delete Form -->
-                            <form method="POST" action="{{ url_for('edit_entities') }}" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette entité ?');">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="entity_type" value="{{ entity_type[:-1] }}">
-                                <input type="hidden" name="id" value="{{ entity.id }}">
-                                <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
-                            </form>
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">
+                {% if entity_type == 'societes' %}
+                    <i class="fas fa-building fa-sm mr-1"></i>Sociétés
+                {% elif entity_type == 'produits' %}
+                    <i class="fas fa-box-open fa-sm mr-1"></i>Produits
+                {% else %}
+                    <i class="fas fa-map-marked-alt fa-sm mr-1"></i>Destinations
+                {% endif %}
+            </h6>
+            <span class="badge badge-primary badge-pill">{{ entities|length }}</span>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" width="100%" cellspacing="0" id="table-{{ entity_type }}">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nom</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-{{ entity_type }}">
+                        {% for entity in entities %}
+                        <tr class="entity-row">
+                            <td>{{ entity.id }}</td>
+                            <td><strong>{{ entity.nom }}</strong></td>
+                            <td>
+                                <div class="d-flex">
+                                    <!-- Update Form -->
+                                    <form method="POST" action="{{ url_for('edit_entities') }}" class="mr-2">
+                                        <input type="hidden" name="action" value="update">
+                                        <input type="hidden" name="entity_type" value="{{ entity_type[:-1] }}">
+                                        <input type="hidden" name="id" value="{{ entity.id }}">
+                                        <div class="input-group input-group-sm">
+                                            <input type="text" name="nom" value="{{ entity.nom }}"
+                                                   class="form-control"
+                                                   placeholder="Nouveau nom..."
+                                                   required>
+                                            <div class="input-group-append">
+                                                <button type="submit" class="btn btn-warning btn-sm"
+                                                        title="Mettre à jour">
+                                                    <i class="fas fa-pen fa-sm"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                    <!-- Delete Button -->
+                                    <form method="POST" action="{{ url_for('edit_entities') }}"
+                                          onsubmit="return confirm('⚠️ Êtes-vous sûr de vouloir supprimer « {{ entity.nom }} » ?\n\nCette action est irréversible.');">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="entity_type" value="{{ entity_type[:-1] }}">
+                                        <input type="hidden" name="id" value="{{ entity.id }}">
+                                       <button type="submit" class="btn btn-danger btn-sm d-flex align-items-center justify-content-center"
+                                                title="Supprimer" style="height: 100%;">
+                                            <i class="fas fa-trash fa-sm"></i>
+                                        </button>
+
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="text-center text-muted">
+                                <i class="fas fa-inbox fa-sm mr-1"></i>
+                                Aucune entité trouvée
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+        {% if entities|length > 7 %}
+        {% set total_pages = ((entities|length / 7)|round(method='ceil')|int) %}
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <div class="dataTables_info" id="dataTableInfo-{{ entity_type }}" role="status" aria-live="polite">
+                    Affichage de <span class="start-item">1</span> à <span class="end-item">7</span> sur {{ entities|length }} éléments
+                </div>
+            </div>
+            <div class="col-md-6">
+                <nav class="d-flex justify-content-end">
+                    <ul class="pagination" id="pagination-{{ entity_type }}">
+                        <li class="page-item disabled">
+                            <a class="page-link" href="#" tabindex="-1" aria-disabled="true">Précédent</a>
+                        </li>
+                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                        {% for i in range(2, total_pages + 1) %}
+                            {% if i <= 3 or i > (total_pages - 2) %}
+                                <li class="page-item"><a class="page-link" href="#">{{ i }}</a></li>
+                            {% elif i == 4 %}
+                                <li class="page-item disabled"><span class="page-link">...</span></li>
+                            {% endif %}
+                        {% endfor %}
+                        <li class="page-item">
+                            <a class="page-link" href="#">Suivant</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+        {% endif %}
+        </div>
+    </div>
     {% endfor %}
 </div>
+
+<script>
+// Form validation
+(function() {
+    'use strict';
+    window.addEventListener('load', function() {
+        var forms = document.getElementsByClassName('needs-validation');
+        Array.prototype.filter.call(forms, function(form) {
+            form.addEventListener('submit', function(event) {
+                if (form.checkValidity() === false) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                form.classList.add('was-validated');
+            }, false);
+        });
+    }, false);
+})();
+
+// Pagination for each entity table
+document.addEventListener('DOMContentLoaded', function() {
+    const itemsPerPage = 7;
+
+    // Initialize pagination for each table
+    ['societes', 'produits', 'destinations'].forEach(entityType => {
+        const table = document.getElementById(`table-${entityType}`);
+        if (!table) return;
+
+        const tbody = document.getElementById(`tbody-${entityType}`);
+        const rows = tbody.querySelectorAll('.entity-row');
+        const totalItems = rows.length;
+        const totalPages = Math.ceil(totalItems / itemsPerPage);
+
+        if (totalItems <= itemsPerPage) {
+            // Hide pagination if not needed
+            const paginationContainer = table.parentElement.querySelector('.row.mt-3');
+            if (paginationContainer) {
+                paginationContainer.style.display = 'none';
+            }
+            return;
+        }
+
+        let currentPage = 1;
+        const pagination = document.getElementById(`pagination-${entityType}`);
+        const infoText = document.getElementById(`dataTableInfo-${entityType}`);
+
+        function showPage(page) {
+            currentPage = Math.max(1, Math.min(page, totalPages));
+
+            // Hide all rows
+            rows.forEach(row => row.style.display = 'none');
+
+            // Show rows for current page
+            const start = (currentPage - 1) * itemsPerPage;
+            const end = Math.min(start + itemsPerPage, totalItems);
+
+            for (let i = start; i < end; i++) {
+                if (rows[i]) rows[i].style.display = '';
+            }
+
+            // Update pagination info
+            if (infoText) {
+                infoText.querySelector('.start-item').textContent = start + 1;
+                infoText.querySelector('.end-item').textContent = end;
+            }
+
+            // Update pagination controls
+            updatePagination();
+        }
+
+        function updatePagination() {
+            if (!pagination) return;
+
+            // Clear existing pagination
+            pagination.innerHTML = '';
+
+            // Previous button
+            const prevLi = document.createElement('li');
+            prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+            prevLi.innerHTML = `<a class="page-link" href="#">Précédent</a>`;
+            prevLi.addEventListener('click', e => {
+                e.preventDefault();
+                if (currentPage > 1) showPage(currentPage - 1);
+            });
+            pagination.appendChild(prevLi);
+
+            // Always show first page
+            addPageItem(1);
+
+            // Show ellipsis if needed
+            if (currentPage > 3) {
+                const ellipsis = document.createElement('li');
+                ellipsis.className = 'page-item disabled';
+                ellipsis.innerHTML = '<span class="page-link">...</span>';
+                pagination.appendChild(ellipsis);
+            }
+
+            // Show pages around current page
+            const startPage = Math.max(2, currentPage - 1);
+            const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+            for (let i = startPage; i <= endPage; i++) {
+                addPageItem(i);
+            }
+
+            // Show ellipsis if needed
+            if (currentPage < totalPages - 2) {
+                const ellipsis = document.createElement('li');
+                ellipsis.className = 'page-item disabled';
+                ellipsis.innerHTML = '<span class="page-link">...</span>';
+                pagination.appendChild(ellipsis);
+            }
+
+            // Always show last page if different from first
+            if (totalPages > 1) {
+                addPageItem(totalPages);
+            }
+
+            // Next button
+            const nextLi = document.createElement('li');
+            nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+            nextLi.innerHTML = `<a class="page-link" href="#">Suivant</a>`;
+            nextLi.addEventListener('click', e => {
+                e.preventDefault();
+                if (currentPage < totalPages) showPage(currentPage + 1);
+            });
+            pagination.appendChild(nextLi);
+        }
+
+        function addPageItem(page) {
+            const li = document.createElement('li');
+            li.className = `page-item ${page === currentPage ? 'active' : ''}`;
+            li.innerHTML = `<a class="page-link" href="#">${page}</a>`;
+            li.addEventListener('click', e => {
+                e.preventDefault();
+                showPage(page);
+            });
+            pagination.appendChild(li);
+        }
+
+        // Initialize
+        showPage(1);
+    });
+});
+
+// Confirmation for delete actions
+document.querySelectorAll('form[onsubmit]').forEach(form => {
+    form.onsubmit = function(e) {
+        return confirm(e.target.getAttribute('data-confirm') ||
+               confirm('⚠️ Êtes-vous sûr de vouloir effectuer cette action ?'));
+    };
+});
+</script>
 {% endblock %}

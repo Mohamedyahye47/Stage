@@ -167,12 +167,14 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
 
         # Table where clause (includes search_query and selected_month)
         where_clause = " WHERE 1=1"
-        params = []
+        table_params = []  # Paramètres pour les requêtes de table
+
         if selected_month:
             where_clause += " AND DATE_FORMAT(i.invoice_date, '%Y-%m') = %s"
-            params.append(selected_month)
+            table_params.append(selected_month)
+
         if search_query and search_query.strip():
-            search_query = f"%{search_query}%"
+            search_query_like = f"%{search_query}%"
             where_clause += """
                 AND (
                     i.ot_number LIKE %s OR
@@ -182,9 +184,20 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                     d.nom LIKE %s
                 )
             """
-            params.extend([search_query] * 5)
+            table_params.extend([search_query_like] * 5)
 
-        # Main table query (with search)
+        # Total count (pour pagination) - utilise les mêmes paramètres que la table
+        cursor.execute(f"""
+            SELECT COUNT(*) as total_count
+            FROM invoices i
+            JOIN societe s ON i.societe_id = s.id
+            JOIN produit p ON i.produit_id = p.id
+            JOIN destination d ON i.destination_id = d.id
+            {where_clause}
+        """, table_params)
+        total_count = cursor.fetchone()['total_count']
+
+        # Main table query (avec search et pagination)
         query = f"""
             SELECT 
                 i.ot_number,
@@ -203,12 +216,13 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
             ORDER BY i.created_at DESC
             LIMIT %s OFFSET %s
         """
-        params.extend([limit, offset])
-        logger.debug(f"Executing table query: {query} with params {params}")
-        cursor.execute(query, params)
+        # Ajouter limit et offset aux paramètres de table
+        main_query_params = table_params + [limit, offset]
+        logger.debug(f"Executing table query: {query} with params {main_query_params}")
+        cursor.execute(query, main_query_params)
         invoices = cursor.fetchall()
 
-        # Graph/stats where clause (only selected_month)
+        # Graph/stats where clause (seulement selected_month pour les stats)
         graph_clause = " WHERE 1=1"
         graph_params = []
         if selected_month:
@@ -246,7 +260,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                         JOIN societe sub_s ON sub_i.societe_id = sub_s.id
                         JOIN produit sub_p ON sub_i.produit_id = sub_p.id
                         JOIN destination sub_d ON sub_i.destination_id = sub_d.id
-                        {graph_clause.replace('s.', 'sub_s.').replace('p.', 'sub_p.').replace('d.', 'sub_d.')}
+                        {graph_clause.replace('i.', 'sub_i.').replace('s.', 'sub_s.').replace('p.', 'sub_p.').replace('d.', 'sub_d.')}
                     ), 0) * 100
                 ) as percentage
             FROM invoices i
@@ -257,7 +271,7 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
             GROUP BY i.societe_id, s.nom
             ORDER BY total_usd DESC
             LIMIT 1
-        """, graph_params)
+        """, graph_params * 2)  # graph_params utilisé deux fois dans la requête
         top_societe = cursor.fetchone()
         stats['top_societe_name'] = top_societe['societe'] if top_societe else 'N/A'
         stats['top_societe_percent'] = round(top_societe['percentage'], 1) if top_societe else 0
@@ -488,17 +502,6 @@ def get_dashboard_data(offset=0, limit=10, search_query=None, selected_month=Non
                     'borderColor': colors[i % len(colors)],
                     'borderWidth': 1
                 })
-
-        # Total count (for pagination, using table filters)
-        cursor.execute(f"""
-            SELECT COUNT(*) as total_count
-            FROM invoices i
-            JOIN societe s ON i.societe_id = s.id
-            JOIN produit p ON i.produit_id = p.id
-            JOIN destination d ON i.destination_id = d.id
-            {where_clause}
-        """, params[:-2])
-        total_count = cursor.fetchone()['total_count']
 
         return {
             'invoices': invoices or [],
@@ -774,6 +777,7 @@ def upload():
             return redirect(url_for('upload'))
 
         if file and allowed_file(file.filename):
+
             try:
                 # 1. Extract OT number from filename
                 filename = secure_filename(file.filename)
@@ -1108,6 +1112,7 @@ def user_management():
         if 'conn' in locals():
             conn.close()
 
+
 @app.route('/delete_account/<int:user_id>', methods=['POST'])
 def delete_account(user_id):
     session_id = session.get('user_id')
@@ -1128,38 +1133,50 @@ def delete_account(user_id):
     try:
         conn = get_connection()
         cursor = conn.cursor(dictionary=True)
-        if conn.in_transaction:
-            conn.rollback()
-            logger.warning(f"Rolled back existing transaction before starting new one for user ID {user_id}")
-        conn.start_transaction()
+
+        # Vérifier si l'utilisateur existe
         cursor.execute("SELECT id, is_admin FROM users WHERE id = %s", (user_id,))
         user = cursor.fetchone()
         if not user:
-            logger.warning(f"User ID {user_id} not found")
             flash('Utilisateur introuvable.', 'warning')
-            conn.rollback()
             return redirect(url_for('user_management'))
+
+        # Vérifier si l'utilisateur est un admin et s'il est le dernier admin restant
         if user['is_admin']:
-            logger.warning(f"Admin user ID {session_id} attempted to delete admin user ID {user_id}")
-            flash('Vous ne pouvez pas supprimer un compte administrateur.', 'danger')
-            conn.rollback()
+            cursor.execute("SELECT COUNT(*) AS total_admins FROM users WHERE is_admin = TRUE")
+            result = cursor.fetchone()
+            if result['total_admins'] <= 1:
+                flash("Impossible de supprimer cet administrateur : l'application doit contenir au moins un admin.", "warning")
+                return redirect(url_for('user_management'))
+
+        # Vérifier si l'utilisateur est lié à des factures
+        cursor.execute("SELECT COUNT(*) AS count FROM invoices WHERE user_id = %s", (user_id,))
+        result = cursor.fetchone()
+        if result['count'] > 0:
+            flash("Impossible de supprimer cet utilisateur car il est lié à des factures existantes.", "warning")
             return redirect(url_for('user_management'))
+
+        # Supprimer l'utilisateur
         cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
-        logger.info(f"Deleted user ID {user_id}")
         conn.commit()
+        logger.info(f"Deleted user ID {user_id}")
         flash('Compte supprimé avec succès.', 'success')
         return redirect(url_for('user_management'))
+
     except mysql.connector.Error as err:
         if conn and conn.in_transaction:
             conn.rollback()
         logger.error(f"Database error during deletion of user ID {user_id}: {str(err)}")
-        flash(f'Erreur de suppression: {str(err)}', 'danger')
+        flash(f'Erreur de suppression : {str(err)}', 'danger')
         return redirect(url_for('user_management'))
+
     finally:
         if cursor:
             cursor.close()
         if conn:
             conn.close()
+
+
 
 @app.route('/delete_invoice/<string:ot_number>', methods=['POST'])
 def delete_invoice(ot_number):
@@ -1385,7 +1402,6 @@ def edit_entities():
             entity_type = request.form.get('entity_type')
             entity_id = request.form.get('id', '').strip()
             entity_nom = request.form.get('nom', '').strip()
-
             if action == 'create':
                 if not entity_nom:
                     flash('Le nom ne peut pas être vide.', 'danger')
